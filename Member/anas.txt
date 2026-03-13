@@ -1,0 +1,45 @@
+8. MINIMUM SPANNING TREE (KRUSKAL’S ALGORITHM)
+Used For:
+- Creating minimum-cost blood bank network
+- Eliminating cycles using DSU
+
+Concept:
+Sorts edges by weight, adds smallest edge that doesn't form a cycle using Union-Find.
+
+Advantage:
+- Ideal for sparse graphs
+- Simple and effective with DSU
+
+Time Complexity:
+O(E log E)
+
+
+9. DIJKSTRA'S ALGORITHM (SHORTEST PATH)
+Used For:
+- Finding fastest delivery route between blood bank and hospitals
+
+Concept:
+Uses min-heap priority queue to always pick the nearest unvisited node and relax edges.
+
+Advantage:
+- Optimal shortest path for non-negative weights
+
+Time Complexity:
+O((V + E) log V)
+
+
+10. MIN-HEAP PRIORITY QUEUE (PATIENT QUEUE)
+Used For:
+- Serving the most critical patient first
+- Ordering by urgency, deadline, arrival time
+
+Concept:
+Binary heap structure where root is always highest priority patient.
+
+Advantage:
+- O(log n) insertion and removal
+- Efficient scheduling
+
+Time Complexity:
+Enqueue/Dequeue: O(log n)
+Peek: O(1)

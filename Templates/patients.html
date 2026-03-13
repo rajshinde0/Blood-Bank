@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Patient Queue - Blood Bank</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .urgency-badge {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.85rem;
+            display: inline-block;
+        }
+        .urgency-critical {
+            background: #e74c3c;
+            color: white;
+        }
+        .urgency-urgent {
+            background: #f39c12;
+            color: white;
+        }
+        .urgency-normal {
+            background: #27ae60;
+            color: white;
+        }
+        .priority-indicator {
+            font-size: 1.5rem;
+            margin-right: 10px;
+        }
+        .patient-card {
+            background: white;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 8px;
+            border-left: 5px solid #3498db;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            transition: transform 0.2s;
+        }
+        .patient-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+        }
+        .patient-card.critical {
+            border-left-color: #e74c3c;
+            background: linear-gradient(to right, #fee, white);
+        }
+        .patient-card.urgent {
+            border-left-color: #f39c12;
+            background: linear-gradient(to right, #ffefd5, white);
+        }
+        .alert-box {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            display: none;
+        }
+        .alert-success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .alert-info {
+            background: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-user-injured"></i> Patient Priority Queue</h1>
+            <p>Managing patients by medical urgency (Min-Heap)</p>
+        </header>
+
+        <nav>
+            <ul>
+                <li><a href="/"><i class="fas fa-home"></i> Dashboard</a></li>
+                <li><a href="/donors"><i class="fas fa-users"></i> Donors</a></li>
+                <li><a href="/inventory"><i class="fas fa-boxes"></i> Inventory</a></li>
+                <li><a href="/transactions"><i class="fas fa-exchange-alt"></i> Transactions</a></li>
+                <li><a href="/patients" class="active"><i class="fas fa-user-injured"></i> Patients</a></li>
+                <li><a href="/compatibility"><i class="fas fa-heartbeat"></i> Compatibility</a></li>
+            </ul>
+        </nav>
+
+        <main>
+            <div id="alertBox" class="alert-box"></div>
+
+            <div class="form-container">
+                <h3><i class="fas fa-user-plus"></i> Add New Patient (Priority Queue)</h3>
+                <form id="addPatientForm">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="id">Patient ID</label>
+                            <input type="text" id="id" name="id" required placeholder="e.g., P001">
+                        </div>
+                        <div class="form-group">
+                            <label for="name">Full Name</label>
+                            <input type="text" id="name" name="name" required placeholder="e.g., Jane Doe">
+                        </div>
+                        <div class="form-group">
+                            <label for="age">Age</label>
+                            <input type="number" id="age" name="age" required min="1" max="120" placeholder="e.g., 35">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="phone">Phone Number</label>
+                            <input type="tel" id="phone" name="phone" required placeholder="e.g., 9876543210">
+                        </div>
+                        <div class="form-group">
+                            <label for="city">City</label>
+                            <input type="text" id="city" name="city" required placeholder="e.g., Mumbai">
+                        </div>
+                        <div class="form-group">
+                            <label for="blood_group">Blood Group Required</label>
+                            <select id="blood_group" name="blood_group" required>
+                                <option value="">Select Blood Group</option>
+                                <option value="A+">A+</option>
+                                <option value="A-">A-</option>
+                                <option value="B+">B+</option>
+                                <option value="B-">B-</option>
+                                <option value="AB+">AB+</option>
+                                <option value="AB-">AB-</option>
+                                <option value="O+">O+</option>
+                                <option value="O-">O-</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="urgency">Medical Urgency Level</label>
+                            <select id="urgency" name="urgency" required>
+                                <option value="">Select Urgency</option>
+                                <option value="1">1 - CRITICAL (Immediate attention required)</option>
+                                <option value="2">2 - URGENT (Needs attention soon)</option>
+                                <option value="3">3 - NORMAL (Routine care)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="deadline_hours">⏰ Deadline (Optional)</label>
+                            <input type="number" id="deadline_hours" name="deadline_hours" 
+                                   min="1" placeholder="Hours until deadline (e.g., 24)">
+                            <small style="color: #7f8c8d; font-size: 0.85rem;">
+                                Leave blank for no deadline. Patients with earlier deadlines are served first within same urgency.
+                            </small>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Add to Priority Queue
+                    </button>
+                </form>
+            </div>
+
+            <div class="form-container" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                <h3 style="color: white; margin: 0;">
+                    <i class="fas fa-procedures"></i> Serve Most Critical Patient
+                </h3>
+                <p style="margin: 10px 0;">Click below to dequeue and serve the patient with highest priority</p>
+                <button onclick="servePatient()" class="btn" style="background: white; color: #667eea;">
+                    <i class="fas fa-user-check"></i> Serve Next Patient
+                </button>
+            </div>
+
+            <div class="table-container">
+                <h3 style="padding: 20px; margin: 0; color: #2c3e50; border-bottom: 2px solid #eee;">
+                    <i class="fas fa-list"></i> Patient Priority Queue 
+                    <span style="color: #e74c3c;">({{ patients|length }} waiting)</span>
+                </h3>
+                
+                {% if patients %}
+                    <div style="padding: 20px;">
+                        {% for patient in patients %}
+                        <div class="patient-card {% if patient.urgency == 1 %}critical{% elif patient.urgency == 2 %}urgent{% endif %}">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div style="flex: 1;">
+                                    <h4 style="margin: 0 0 10px 0; color: #2c3e50;">
+                                        <span class="priority-indicator">
+                                            {% if patient.urgency == 1 %}
+                                                <i class="fas fa-exclamation-circle" style="color: #e74c3c;"></i>
+                                            {% elif patient.urgency == 2 %}
+                                                <i class="fas fa-exclamation-triangle" style="color: #f39c12;"></i>
+                                            {% else %}
+                                                <i class="fas fa-info-circle" style="color: #27ae60;"></i>
+                                            {% endif %}
+                                        </span>
+                                        {{ patient.name }}
+                                    </h4>
+                                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                                        <div><strong>ID:</strong> {{ patient.id }}</div>
+                                        <div><strong>Age:</strong> {{ patient.age }}</div>
+                                        <div><strong>Phone:</strong> <i class="fas fa-phone"></i> {{ patient.phone }}</div>
+                                        <div><strong>City:</strong> <i class="fas fa-map-marker-alt"></i> {{ patient.city }}</div>
+                                        <div><strong>Blood Needed:</strong> <span class="blood-group">{{ patient.blood_group }}</span></div>
+                                    </div>
+                                </div>
+                                <div style="text-align: center; margin-left: 20px;">
+                                    <span class="urgency-badge urgency-{% if patient.urgency == 1 %}critical{% elif patient.urgency == 2 %}urgent{% else %}normal{% endif %}">
+                                        {% if patient.urgency == 1 %}
+                                            CRITICAL
+                                        {% elif patient.urgency == 2 %}
+                                            URGENT
+                                        {% else %}
+                                            NORMAL
+                                        {% endif %}
+                                    </span>
+                                    <div style="margin-top: 10px; font-size: 0.9rem; color: #7f8c8d;">
+                                        Priority: {{ patient.urgency }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="empty-state" style="padding: 40px;">
+                        <i class="fas fa-inbox"></i>
+                        <p>No patients in queue</p>
+                    </div>
+                {% endif %}
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Add patient to priority queue
+        document.getElementById('addPatientForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const response = await fetch('/add_patient', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                showAlert(`Patient added with ${data.urgency_label} priority! Queue size: ${data.queue_size}`, 'success');
+                this.reset();
+                setTimeout(() => location.reload(), 1500);
+            }
+        });
+
+        // Serve most critical patient
+        async function servePatient() {
+            const response = await fetch('/serve_patient', {
+                method: 'POST'
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                const patient = data.patient;
+                showAlert(
+                    `Serving ${data.urgency_label} patient: ${patient.name} (ID: ${patient.id})\n` +
+                    `Blood needed: ${patient.blood_group}\n` +
+                    `Remaining patients: ${data.remaining}`,
+                    'info'
+                );
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                showAlert(data.message, 'info');
+            }
+        }
+
+        // Show alert message
+        function showAlert(message, type) {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.className = `alert-box alert-${type}`;
+            alertBox.innerHTML = `<i class="fas fa-check-circle"></i> ${message.replace(/\n/g, '<br>')}`;
+            alertBox.style.display = 'block';
+            
+            setTimeout(() => {
+                alertBox.style.display = 'none';
+            }, 5000);
+        }
+    </script>
+</body>
+</html>

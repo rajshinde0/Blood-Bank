@@ -1,0 +1,47 @@
+5. LRU CACHE (LEAST RECENTLY USED)
+Used For:
+- Storing frequently searched donor records
+- Reducing repeated lookups from hash table
+
+Concept:
+Combines a doubly linked list + hash map to track access order and offer O(1) get/put operations.
+
+Advantage:
+- O(1) get/put
+- Evicts least recently used entry automatically
+
+Time Complexity:
+Get/Put: O(1)
+
+
+6. UNION-FIND (DISJOINT SET UNION)
+Used For:
+- Grouping donors in compatibility sets
+- Checking whether two donors are connected
+
+Concept:
+Manages disjoint sets and supports union + find operations with path compression and union by rank.
+
+Advantage:
+- Nearly constant-time operations
+- Very efficient cycle detection (used in MST too)
+
+Time Complexity:
+Find/Union: O(α(n)) ≈ O(1)
+
+
+7. SEGMENT TREE (RANGE QUERIES)
+Used For:
+- Querying total blood inventory between two days
+- Updating blood stock for a specific day
+
+Concept:
+A binary tree storing aggregated values over segments of an array.
+
+Advantage:
+- O(log n) query
+- O(log n) update
+
+Time Complexity:
+Build: O(n)
+Query/Update: O(log n)

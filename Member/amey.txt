@@ -1,0 +1,62 @@
+1. HASH TABLE WITH SEPARATE CHAINING
+Used For:
+- Storing all donors by ID
+- Fast lookup, insertion, deletion using ID
+
+Concept:
+A hash table maps keys to values using a hash function. Collisions are handled through separate chaining via linked lists.
+
+Advantage:
+- O(1) average access time
+- Prime table size used for minimal collisions
+
+Time Complexity:
+Insert/Search/Delete: O(1) average, O(n) worst
+
+
+2. AVL TREE (SELF-BALANCING BST)
+Used For:
+- Searching donors by name
+- Maintaining sorted donor names
+
+Concept:
+An AVL tree ensures height balance by keeping balance factor -1,0,1. Uses rotations (LL, RR, LR, RL) to stay balanced.
+
+Advantage:
+- Guarantees O(log n) search and insert
+- Prevents linked-list-like degeneration of BST
+
+Time Complexity:
+Insert/Search/Delete: O(log n)
+
+
+3. GRAPH – ADJACENCY MATRIX (BLOOD COMPATIBILITY)
+Used For:
+- Checking if a donor’s blood type is compatible with a patient
+- Displaying compatibility matrix
+
+Concept:
+A fixed-size 8x8 boolean matrix representing donor-to-recipient compatibility relationships.
+
+Advantage:
+- O(1) compatibility lookup
+- Easy visualization and traversal (BFS/DFS)
+
+Time Complexity:
+Lookup: O(1)
+
+
+4. TRIE (PREFIX TREE) FOR AUTOCOMPLETE
+Used For:
+- Autocomplete donor names
+- Fast prefix searching
+
+Concept:
+Trie nodes store characters; complete paths form names. Supports auto-suggestions with prefix search.
+
+Advantage:
+- O(m) prefix search, independent of number of donors
+- Efficient for large sets of similar-name donors
+
+Time Complexity:
+Insert/Search: O(m); Prefix search: O(m + k)

@@ -1,0 +1,45 @@
+11. BFS (BREADTH-FIRST SEARCH)
+Used For:
+- Level-order blood compatibility exploration
+
+Concept:
+Explores all neighbors level-by-level using a queue.
+
+Advantage:
+- Finds shortest path in unweighted graphs
+- Complete traversal of reachable nodes
+
+Time Complexity:
+O(V + E)
+
+
+12. DFS (DEPTH-FIRST SEARCH)
+Used For:
+- Deep compatibility exploration
+
+Concept:
+Recursively traverses as far as possible along a path before backtracking.
+
+Advantage:
+- Memory efficient
+- Good for exploring all possible compatibility paths
+
+Time Complexity:
+O(V + E)
+
+
+13. INPUT VALIDATION SYSTEM
+Used For:
+- Checking donor age, phone number, blood group, unique ID
+
+Concept:
+Simple rule-based validation before accepting input into database.
+
+Advantage:
+- Prevents data corruption
+- Ensures program reliability
+
+Time Complexity:
+Blood group: O(1)
+Phone: O(n)
+ID check via hash table: O(k)

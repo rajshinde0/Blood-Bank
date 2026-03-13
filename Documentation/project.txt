@@ -1,0 +1,911 @@
+================================================================================
+                          PROJECT DOCUMENTATION
+                    BLOOD BANK MANAGEMENT SYSTEM
+                       Complete Project Overview
+                        Date: December 2025
+================================================================================
+
+TABLE OF CONTENTS
+================================================================================
+1. PROJECT OVERVIEW
+2. DIRECTORY STRUCTURE
+3. FILE-BY-FILE ANALYSIS
+   3.1 Backend Files
+   3.2 Frontend Templates
+   3.3 Static Files (CSS)
+   3.4 Data Files
+   3.5 Documentation Files
+4. SYSTEM ARCHITECTURE
+5. DATA FLOW
+6. FEATURES IMPLEMENTED
+7. DSA CONCEPTS USED
+8. HOW TO RUN
+9. API ENDPOINTS
+10. FUTURE ENHANCEMENTS
+
+================================================================================
+                        1. PROJECT OVERVIEW
+================================================================================
+
+PROJECT NAME: Blood Bank Management System
+
+DESCRIPTION:
+A full-stack web application for managing blood bank operations including 
+donor registration, blood inventory tracking, transaction management, patient 
+priority queuing, and blood compatibility checking.
+
+TECHNOLOGY STACK:
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Layer          │ Technology           │ Purpose                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Backend        │ Python Flask         │ Web server, routing, business logic│
+│ Backend (Alt)  │ C++ (prog1.cpp)      │ Console-based DSA implementation   │
+│ Frontend       │ HTML5 + Jinja2       │ Dynamic web pages                  │
+│ Styling        │ CSS3                 │ Responsive UI with gradients       │
+│ Icons          │ Font Awesome 6.0     │ UI icons and graphics              │
+│ Database       │ Text Files (CSV)     │ Simple file-based storage          │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+KEY FEATURES:
+• Donor Management - Register, search, and delete blood donors
+• Blood Inventory - Track 8 blood types with stock levels
+• Transaction Recording - Log donations and blood issues
+• Patient Priority Queue - Min-heap based urgency scheduling
+• Blood Compatibility - Graph-based compatibility checking
+• Earliest Deadline First (EDF) Scheduling for patients
+
+================================================================================
+                        2. DIRECTORY STRUCTURE
+================================================================================
+
+CP/
+│
+├── app.py                    # Main Flask application (373 lines)
+│
+├── cpp_Backend/              # C++ Backend (Console Version)
+│   ├── prog1.cpp            # Full DSA implementation (~2,200 lines)
+│   └── prog1.exe            # Compiled executable
+│
+├── Data/                     # Data storage (CSV format)
+│   ├── donors.txt           # Donor records
+│   ├── inventory.txt        # Blood stock levels
+│   ├── patients.txt         # Patient queue data
+│   └── transactions.txt     # Transaction history
+│
+├── Documentation/            # Project documentation
+│   ├── dsa.txt              # DSA concepts explained
+│   ├── code.txt             # prog1.cpp line-by-line explanation
+│   ├── implemented.txt      # Features implemented report
+│   ├── missing.txt          # Features to implement
+│   └── project.txt          # THIS FILE - Complete overview
+│
+├── static/                   # Static assets
+│   └── css/
+│       └── style.css        # Main stylesheet (411 lines)
+│
+├── Templates/                # HTML templates (Jinja2)
+│   ├── index.html           # Dashboard homepage
+│   ├── donors.html          # Donor management page
+│   ├── inventory.html       # Blood inventory page
+│   ├── transactions.html    # Transaction recording page
+│   ├── patients.html        # Patient queue page
+│   └── compatibility.html   # Blood compatibility checker
+│
+└── __pycache__/             # Python bytecode cache
+
+================================================================================
+                        3. FILE-BY-FILE ANALYSIS
+================================================================================
+
+-----------------------------------------------------------------------------
+3.1 BACKEND FILES
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: app.py (373 lines)                                                  ║
+║ TYPE: Python Flask Application                                            ║
+║ PURPOSE: Main web server handling all HTTP requests                       ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+STRUCTURE:
+
+Lines 1-17: IMPORTS & CONFIGURATION
+    - Flask, render_template, request, redirect, url_for, jsonify
+    - csv, time, os, heapq, datetime, timedelta
+    - Data file paths defined as constants
+
+Lines 18-55: PATIENT PRIORITY QUEUE CLASS
+    class PatientQueue:
+        - Uses min-heap (heapq) for priority ordering
+        - 4-tuple priority: (urgency, deadline, arrival_time, patient)
+        - Implements EDF (Earliest Deadline First) scheduling
+        - Methods: enqueue(), dequeue(), peek(), get_all(), size()
+
+Lines 57-70: BLOOD COMPATIBILITY DICTIONARY
+    BLOOD_COMPATIBILITY = {
+        'O-': ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'],
+        'O+': ['O+', 'A+', 'B+', 'AB+'],
+        'A-': ['A-', 'A+', 'AB-', 'AB+'],
+        'A+': ['A+', 'AB+'],
+        'B-': ['B-', 'B+', 'AB-', 'AB+'],
+        'B+': ['B+', 'AB+'],
+        'AB-': ['AB-', 'AB+'],
+        'AB+': ['AB+']
+    }
+
+Lines 72-98: HELPER FUNCTIONS
+    - check_compatibility(donor_blood, patient_blood)
+    - read_csv(filename) - Parse CSV data files
+    - write_csv(filename, data) - Save CSV data files
+
+Lines 100-108: DASHBOARD ROUTE (/)
+    - Displays summary statistics
+    - Shows recent 5 transactions
+    - Displays inventory with status indicators
+
+Lines 112-163: DONOR MANAGEMENT
+    GET /donors - List all donors with search functionality
+    POST /add_donor - Register new donor
+    POST /delete_donor/<id> - Remove donor
+
+Lines 167-170: INVENTORY ROUTE
+    GET /inventory - Display blood stock levels
+
+Lines 174-215: TRANSACTION MANAGEMENT
+    GET /transactions - Show transaction history with donor/patient reference
+    POST /add_transaction - Record donation or blood issue
+        - Updates inventory automatically
+
+Lines 219-281: PATIENT MANAGEMENT (Priority Queue)
+    GET /patients - Display patient queue
+    POST /add_patient - Add patient with urgency and deadline
+    POST /serve_patient - Dequeue highest priority patient
+    GET /peek_patient - View next patient without removing
+
+Lines 290-360: BLOOD COMPATIBILITY ROUTES
+    GET /compatibility - Display compatibility checker page
+    POST /check_compatibility - Check two blood types
+    POST /find_compatible_donors - Find all compatible donors
+
+Lines 370-373: APPLICATION ENTRY POINT
+    if __name__ == '__main__':
+        app.run(debug=True)
+
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: cpp_Backend/prog1.cpp (~2,200 lines)                                ║
+║ TYPE: C++ Console Application                                             ║
+║ PURPOSE: DSA-heavy backend with advanced data structures                  ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+This is the C++ console version implementing 11 DSA features:
+
+1. Hash Table with Chaining (O(1) donor lookup)
+2. AVL Tree (Self-balancing BST for donor names)
+3. Graph (Blood compatibility adjacency list)
+4. Trie (Autocomplete donor name search)
+5. LRU Cache (Recent donor access caching)
+6. Union-Find (Blood type grouping)
+7. Segment Tree (Range queries on inventory)
+8. Minimum Spanning Tree (Prim's algorithm for networks)
+9. Dijkstra's Algorithm (Shortest path in networks)
+10. Min-Heap Priority Queue (Patient scheduling)
+11. Input Validation (Age, phone, blood type verification)
+
+See Documentation/code.txt for complete line-by-line explanation.
+See Documentation/dsa.txt for DSA concepts explanation.
+
+-----------------------------------------------------------------------------
+3.2 FRONTEND TEMPLATES
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Templates/index.html (102 lines)                                    ║
+║ TYPE: Jinja2 HTML Template                                                ║
+║ PURPOSE: Dashboard homepage with summary statistics                       ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+COMPONENTS:
+┌─────────────────────────────────────────────────────────────────┐
+│ Header: "Blood Bank Management System" with heartbeat icon     │
+├─────────────────────────────────────────────────────────────────┤
+│ Navigation: Dashboard | Donors | Inventory | Transactions |    │
+│             Patients | Compatibility                           │
+├─────────────────────────────────────────────────────────────────┤
+│ Dashboard Cards (4 stat cards):                                │
+│   • Total Donors - Purple gradient                             │
+│   • Blood Groups - Pink gradient                               │
+│   • Total Transactions - Blue gradient                         │
+│   • Patients Waiting - Orange gradient                         │
+├─────────────────────────────────────────────────────────────────┤
+│ Blood Inventory Table:                                         │
+│   Columns: Blood Group | Quantity | Status                     │
+│   Status Colors: Green (>10) | Yellow (>5) | Red (≤5)         │
+├─────────────────────────────────────────────────────────────────┤
+│ Recent Transactions:                                           │
+│   Last 5 transactions with action, blood type, quantity, time  │
+└─────────────────────────────────────────────────────────────────┘
+
+JINJA2 FEATURES USED:
+- {{ donors }} - Variable interpolation
+- {{ inventory|length }} - Filter (length)
+- {% for item in inventory %} - Loop
+- {% if item[1]|int > 10 %} - Conditional with filter
+- {{ url_for('static', filename='css/style.css') }} - URL generation
+
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Templates/donors.html (150 lines)                                   ║
+║ TYPE: Jinja2 HTML Template                                                ║
+║ PURPOSE: Donor registration and management                                ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+COMPONENTS:
+┌─────────────────────────────────────────────────────────────────┐
+│ Add New Donor Form:                                            │
+│   Fields: Donor ID, Full Name, Blood Group (dropdown),         │
+│           Age (18-65), Phone Number                            │
+│   Submit: "Add Donor" button                                   │
+├─────────────────────────────────────────────────────────────────┤
+│ Search Donors:                                                 │
+│   Dropdown: All Fields | ID Only | Name Only | Blood Group     │
+│   Input: Search text                                           │
+│   Buttons: Search | Clear                                      │
+├─────────────────────────────────────────────────────────────────┤
+│ Registered Donors Table:                                       │
+│   Columns: ID | Name | Blood Group | Age | Phone | Actions     │
+│   Actions: Delete button with confirmation                     │
+└─────────────────────────────────────────────────────────────────┘
+
+FORM HANDLING:
+- POST /add_donor - Submit new donor
+- POST /delete_donor/<id> - Delete with JavaScript confirm()
+- GET /donors?search=X&search_type=Y - Search with query params
+
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Templates/inventory.html (105 lines)                                ║
+║ TYPE: Jinja2 HTML Template                                                ║
+║ PURPOSE: Blood inventory display and monitoring                           ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+COMPONENTS:
+┌─────────────────────────────────────────────────────────────────┐
+│ Blood Type Cards (8 cards, one per blood type):                │
+│   Colors: Green (>10) | Orange (>5) | Red (≤5)                │
+│   Display: Blood type name and quantity                        │
+├─────────────────────────────────────────────────────────────────┤
+│ Detailed Inventory Table:                                      │
+│   Columns: Blood Group | Available Units | Status | Recommend  │
+│   Status: Sufficient | Low | Critical                          │
+│   Recommendations:                                             │
+│     - Critical: "Urgent donation needed"                       │
+│     - Low: "Schedule donation drive"                           │
+│     - Good: "Stock is healthy"                                 │
+└─────────────────────────────────────────────────────────────────┘
+
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Templates/transactions.html (201 lines)                             ║
+║ TYPE: Jinja2 HTML Template                                                ║
+║ PURPOSE: Record blood donations and issues                                ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+COMPONENTS:
+┌─────────────────────────────────────────────────────────────────┐
+│ Quick Reference Cards (2-column grid):                         │
+│                                                                 │
+│   [Donors Reference]     [Patients Reference]                  │
+│   - Scrollable table     - Scrollable table                    │
+│   - ID, Name, Blood,     - ID, Name, Blood,                    │
+│     Phone                  Priority (emoji)                    │
+│   - Sticky headers       - Sticky headers                      │
+├─────────────────────────────────────────────────────────────────┤
+│ Add Transaction Form:                                          │
+│   Type: Donation (Add) | Issue (Remove)                        │
+│   Donor/Patient ID, Blood Group, Quantity                      │
+├─────────────────────────────────────────────────────────────────┤
+│ Transaction History Table:                                     │
+│   Type (green ↓ Donation | red ↑ Issue)                        │
+│   ID | Blood Group | Quantity | Date & Time                    │
+└─────────────────────────────────────────────────────────────────┘
+
+SPECIAL FEATURES:
+- Donor/Patient reference cards visible while entering transactions
+- Scrollable reference panels (max-height: 300px)
+- Color-coded transaction types
+
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Templates/patients.html (285 lines)                                 ║
+║ TYPE: Jinja2 HTML Template                                                ║
+║ PURPOSE: Patient priority queue management                                ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+COMPONENTS:
+┌─────────────────────────────────────────────────────────────────┐
+│ Add Patient Form:                                              │
+│   Patient ID, Full Name, Age, Phone, City, Blood Group         │
+│   Urgency: 1-CRITICAL | 2-URGENT | 3-NORMAL                   │
+│   Deadline Hours (optional): EDF scheduling support            │
+├─────────────────────────────────────────────────────────────────┤
+│ Serve Patient Button (Purple gradient card):                   │
+│   "Click to dequeue and serve highest priority patient"        │
+├─────────────────────────────────────────────────────────────────┤
+│ Patient Queue Display:                                         │
+│   Card layout for each patient                                 │
+│   Visual urgency indicators:                                   │
+│     🔴 CRITICAL - Red border/background                        │
+│     🟡 URGENT - Orange border/background                       │
+│     🟢 NORMAL - Blue border                                    │
+│   Shows: Name, ID, Age, Phone, City, Blood Group, Priority     │
+└─────────────────────────────────────────────────────────────────┘
+
+JAVASCRIPT FEATURES:
+- AJAX form submission (fetch API)
+- Dynamic alert messages
+- Auto-reload after patient added
+- Async servePatient() function
+
+PRIORITY QUEUE LOGIC:
+- Patients sorted by: (urgency, deadline, arrival_time)
+- Lower urgency number = higher priority
+- Earlier deadline = higher priority within same urgency
+- Earlier arrival = higher priority if urgency and deadline equal
+
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Templates/compatibility.html (347 lines)                            ║
+║ TYPE: Jinja2 HTML Template                                                ║
+║ PURPOSE: Blood type compatibility checker                                 ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+COMPONENTS:
+┌─────────────────────────────────────────────────────────────────┐
+│ Check Compatibility Form:                                      │
+│   Select: Donor Blood Group                                    │
+│   Select: Patient Blood Group                                  │
+│   Result: Green (Compatible) or Red (Incompatible)             │
+├─────────────────────────────────────────────────────────────────┤
+│ Find Compatible Donors Form:                                   │
+│   Select: Patient Blood Group                                  │
+│   Result: List of all compatible donors from database          │
+├─────────────────────────────────────────────────────────────────┤
+│ Compatibility Matrix (8x8 table):                              │
+│   Row = Donor Blood Type                                       │
+│   Column = Patient Blood Type                                  │
+│   ✓ Green cells = Compatible                                   │
+│   ✗ Red cells = Incompatible                                   │
+│                                                                 │
+│   O- is universal donor (all ✓)                                │
+│   AB+ is universal recipient (all ✓ in column)                 │
+└─────────────────────────────────────────────────────────────────┘
+
+JAVASCRIPT FEATURES:
+- AJAX compatibility checking
+- Dynamic result display
+- Compatible donor list generation
+
+-----------------------------------------------------------------------------
+3.3 STATIC FILES (CSS)
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: static/css/style.css (411 lines)                                    ║
+║ TYPE: CSS3 Stylesheet                                                     ║
+║ PURPOSE: Complete styling for all pages                                   ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+CSS ARCHITECTURE:
+
+Lines 1-20: CSS CUSTOM PROPERTIES (Variables)
+    --primary-color: #e74c3c    (Red - blood theme)
+    --secondary-color: #c0392b  (Dark red)
+    --success-color: #27ae60    (Green)
+    --warning-color: #f39c12    (Orange)
+    --danger-color: #e74c3c     (Red)
+    --info-color: #3498db       (Blue)
+    --dark-color: #2c3e50       (Dark gray)
+    --light-color: #ecf0f1      (Light gray)
+    --card-shadow: 0 4px 6px rgba(0, 0, 0, 0.1)
+    --gradient: linear-gradient(135deg, #e74c3c, #c0392b)
+
+Lines 21-50: GLOBAL STYLES
+    - Box-sizing reset
+    - Body background gradient
+    - Container max-width: 1200px
+    - Font family: 'Segoe UI', system fonts
+
+Lines 51-90: HEADER & NAVIGATION
+    - Gradient header background
+    - Flexbox navigation
+    - Active link highlighting
+    - Hover transitions
+
+Lines 91-140: DASHBOARD CARDS
+    - 4-column grid layout
+    - Gradient backgrounds
+    - Number styling with large font
+    - Box shadow effects
+
+Lines 141-220: FORMS
+    - Form container white background
+    - Form row grid (3 columns)
+    - Input/Select styling
+    - Focus states with border color change
+    - Label styling
+
+Lines 221-270: BUTTONS
+    - .btn base class
+    - .btn-primary (red)
+    - .btn-success (green)
+    - .btn-danger (red, smaller)
+    - .btn-sm (small variant)
+    - Hover transform effects
+
+Lines 271-320: TABLES
+    - .table-container wrapper
+    - thead dark background
+    - tbody row hover effect
+    - Responsive padding
+
+Lines 321-360: BLOOD GROUP BADGES
+    - .blood-group inline-block
+    - Red background, white text
+    - Border radius 20px
+
+Lines 361-400: RECENT ACTIVITY
+    - Activity item cards
+    - Left border accent
+    - Time display styling
+
+Lines 401-411: RESPONSIVE DESIGN
+    @media (max-width: 768px):
+    - Single column layouts
+    - Vertical navigation
+    - Reduced padding
+
+-----------------------------------------------------------------------------
+3.4 DATA FILES
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Data/donors.txt                                                     ║
+║ TYPE: CSV (Comma-Separated Values)                                        ║
+║ PURPOSE: Store registered donor information                               ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+FORMAT: ID,Name,BloodGroup,Age,Phone
+
+SAMPLE DATA:
+1001,Rajwardhan Shinde,B+,18,1234567890
+1002,Tanveer Jamadar,O+,20,2345678910
+1003,Aparna Nair,A+,25,3456789012
+1004,Adarsh Shah,B-,19,4567890123
+
+FIELDS:
+- ID (String): Unique donor identifier (e.g., "1001", "D001")
+- Name (String): Full name of donor
+- BloodGroup (String): One of 8 types (A+, A-, B+, B-, AB+, AB-, O+, O-)
+- Age (Integer): Must be 18-65 for eligibility
+- Phone (String): 10-digit phone number
+
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Data/inventory.txt                                                  ║
+║ TYPE: CSV (Comma-Separated Values)                                        ║
+║ PURPOSE: Track blood stock levels by type                                 ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+FORMAT: BloodGroup,Quantity
+
+SAMPLE DATA:
+A+,0
+A-,0
+B+,150
+B-,0
+AB+,0
+AB-,0
+O+,100
+O-,0
+
+FIELDS:
+- BloodGroup (String): One of 8 blood types
+- Quantity (Integer): Number of units available
+
+INVENTORY STATUS LOGIC:
+- Quantity > 10: Good Stock (Green)
+- Quantity > 5:  Low Stock (Yellow/Orange)
+- Quantity ≤ 5:  Critical (Red)
+
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Data/patients.txt                                                   ║
+║ TYPE: CSV (Comma-Separated Values)                                        ║
+║ PURPOSE: Store patient queue data persistently                            ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+FORMAT: ID,Name,Age,Phone,City,BloodGroup,Urgency,Deadline,ArrivalTime
+
+FIELDS:
+- ID (String): Unique patient identifier
+- Name (String): Full name
+- Age (Integer): Patient age
+- Phone (String): Contact number
+- City (String): Patient's city
+- BloodGroup (String): Required blood type
+- Urgency (Integer): 1=Critical, 2=Urgent, 3=Normal
+- Deadline (Float): Unix timestamp of deadline (inf if none)
+- ArrivalTime (Float): Unix timestamp when added to queue
+
+NOTE: Patient data is primarily managed in-memory using the PatientQueue
+class. File is used for persistence.
+
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Data/transactions.txt                                               ║
+║ TYPE: CSV (Comma-Separated Values)                                        ║
+║ PURPOSE: Log all blood donations and issues                               ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+FORMAT: Action,DonorID,BloodGroup,Quantity,Timestamp
+
+SAMPLE DATA:
+Donation,1001,B+,50,Sat Dec  7 14:30:00 2024
+Issue,P001,B+,5,Sat Dec  7 15:45:00 2024
+Donation,1002,O+,100,Sat Dec  7 16:00:00 2024
+Issue,P002,O+,10,Sat Dec  7 16:30:00 2024
+
+FIELDS:
+- Action (String): "Donation" or "Issue"
+- DonorID (String): ID of donor (donation) or patient (issue)
+- BloodGroup (String): Blood type involved
+- Quantity (Integer): Number of units
+- Timestamp (String): Human-readable date/time from time.ctime()
+
+TRANSACTION LOGIC:
+- Donation: Adds to inventory (inventory[blood_group] += quantity)
+- Issue: Subtracts from inventory (inventory[blood_group] -= quantity)
+
+-----------------------------------------------------------------------------
+3.5 DOCUMENTATION FILES
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Documentation/dsa.txt                                               ║
+║ TYPE: Text Documentation                                                  ║
+║ PURPOSE: Explain DSA concepts used in the project                         ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+CONTENTS:
+- 13 DSA concepts explained in detail
+- Where each concept is implemented
+- Time/Space complexity analysis
+- Real-world applications in blood bank context
+
+DSA CONCEPTS COVERED:
+1. Hash Table with Chaining
+2. AVL Tree (Self-Balancing BST)
+3. Graph (Adjacency List)
+4. Trie (Prefix Tree)
+5. LRU Cache
+6. Union-Find (Disjoint Set)
+7. Segment Tree
+8. Minimum Spanning Tree (Prim's Algorithm)
+9. Dijkstra's Algorithm
+10. Min-Heap Priority Queue
+11. Input Validation Algorithms
+12. Earliest Deadline First (EDF) Scheduling
+13. File I/O and CSV Parsing
+
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Documentation/code.txt                                              ║
+║ TYPE: Text Documentation                                                  ║
+║ PURPOSE: Line-by-line explanation of prog1.cpp                            ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+CONTENTS:
+- Complete breakdown of prog1.cpp
+- Function-by-function explanation
+- Data structure declarations
+- Algorithm implementations
+- Menu system description
+
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Documentation/implemented.txt                                       ║
+║ TYPE: Text Documentation                                                  ║
+║ PURPOSE: Report of implemented DSA features                               ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+CONTENTS:
+- Features successfully implemented
+- Code changes made
+- Performance improvements achieved
+- Before/After comparisons
+
+-----------------------------------------------------------------------------
+
+╔═══════════════════════════════════════════════════════════════════════════╗
+║ FILE: Documentation/missing.txt                                           ║
+║ TYPE: Text Documentation                                                  ║
+║ PURPOSE: Features still to be implemented                                 ║
+╚═══════════════════════════════════════════════════════════════════════════╝
+
+CONTENTS:
+- Critical priority features
+- Medium priority enhancements
+- Low priority nice-to-haves
+- Implementation guidelines
+
+================================================================================
+                        4. SYSTEM ARCHITECTURE
+================================================================================
+
+                         ┌─────────────────┐
+                         │   Web Browser   │
+                         │  (User Client)  │
+                         └────────┬────────┘
+                                  │ HTTP Requests
+                                  ▼
+                    ┌─────────────────────────────┐
+                    │     Flask Web Server        │
+                    │        (app.py)             │
+                    │                             │
+                    │  ┌────────────────────────┐ │
+                    │  │   Route Handlers       │ │
+                    │  │   • / (index)          │ │
+                    │  │   • /donors            │ │
+                    │  │   • /inventory         │ │
+                    │  │   • /transactions      │ │
+                    │  │   • /patients          │ │
+                    │  │   • /compatibility     │ │
+                    │  └────────────────────────┘ │
+                    │                             │
+                    │  ┌────────────────────────┐ │
+                    │  │   Business Logic       │ │
+                    │  │   • PatientQueue       │ │
+                    │  │   • Compatibility      │ │
+                    │  │   • CSV Helpers        │ │
+                    │  └────────────────────────┘ │
+                    └─────────────┬───────────────┘
+                                  │
+              ┌───────────────────┼───────────────────┐
+              │                   │                   │
+              ▼                   ▼                   ▼
+    ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
+    │   Data Layer    │ │  Template Layer │ │  Static Layer   │
+    │   (Data/*.txt)  │ │ (Templates/*.html)│ │  (static/css/) │
+    │                 │ │                 │ │                 │
+    │ • donors.txt    │ │ • index.html    │ │ • style.css     │
+    │ • inventory.txt │ │ • donors.html   │ │                 │
+    │ • patients.txt  │ │ • inventory.html│ │                 │
+    │ • transactions  │ │ • transactions  │ │                 │
+    │   .txt          │ │   .html         │ │                 │
+    └─────────────────┘ │ • patients.html │ └─────────────────┘
+                        │ • compatibility │
+                        │   .html         │
+                        └─────────────────┘
+
+================================================================================
+                            5. DATA FLOW
+================================================================================
+
+DONOR REGISTRATION FLOW:
+========================
+User → [donors.html Form] → POST /add_donor → [app.py]
+  → read_csv(donors.txt) → append new donor → write_csv(donors.txt)
+  → redirect /donors → [donors.html] → Display updated list
+
+BLOOD TRANSACTION FLOW:
+=======================
+User → [transactions.html Form] → POST /add_transaction → [app.py]
+  → read_csv(transactions.txt) → append transaction → write_csv
+  → read_csv(inventory.txt) → update quantity → write_csv
+  → redirect /transactions → Display updated history
+
+PATIENT QUEUE FLOW:
+==================
+Add Patient:
+  User → [patients.html Form] → POST /add_patient → [app.py]
+    → patient_queue.enqueue(patient) → write to patients.txt
+    → JSON response → JavaScript updates UI
+
+Serve Patient:
+  User → Click "Serve" → POST /serve_patient → [app.py]
+    → patient_queue.dequeue() → return patient details
+    → JSON response → JavaScript displays served patient
+
+COMPATIBILITY CHECK FLOW:
+========================
+User → [compatibility.html Form] → POST /check_compatibility → [app.py]
+  → check_compatibility(donor_blood, patient_blood)
+  → lookup BLOOD_COMPATIBILITY dictionary
+  → JSON response → JavaScript displays result
+
+================================================================================
+                        6. FEATURES IMPLEMENTED
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ FEATURE                          │ LOCATION           │ STATUS             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Donor Registration               │ /donors            │ ✓ Implemented      │
+│ Donor Search (Multi-field)       │ /donors            │ ✓ Implemented      │
+│ Donor Deletion                   │ /donors            │ ✓ Implemented      │
+│ Blood Inventory Display          │ /inventory         │ ✓ Implemented      │
+│ Stock Level Indicators           │ /inventory         │ ✓ Implemented      │
+│ Transaction Recording            │ /transactions      │ ✓ Implemented      │
+│ Auto Inventory Update            │ /add_transaction   │ ✓ Implemented      │
+│ Donor/Patient Quick Reference    │ /transactions      │ ✓ Implemented      │
+│ Patient Priority Queue           │ /patients          │ ✓ Implemented      │
+│ Urgency-Based Scheduling         │ /patients          │ ✓ Implemented      │
+│ EDF Deadline Scheduling          │ /patients          │ ✓ Implemented      │
+│ Serve Next Patient               │ /patients          │ ✓ Implemented      │
+│ Blood Compatibility Check        │ /compatibility     │ ✓ Implemented      │
+│ Find Compatible Donors           │ /compatibility     │ ✓ Implemented      │
+│ Compatibility Matrix Display     │ /compatibility     │ ✓ Implemented      │
+│ Dashboard Statistics             │ /                  │ ✓ Implemented      │
+│ Recent Transactions Display      │ /                  │ ✓ Implemented      │
+│ Responsive Design                │ style.css          │ ✓ Implemented      │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+                        7. DSA CONCEPTS USED
+================================================================================
+
+IN FLASK APP (app.py):
+─────────────────────
+1. MIN-HEAP (Priority Queue)
+   - heapq module for PatientQueue
+   - O(log n) insert and extract
+   - Tuple ordering: (urgency, deadline, arrival, patient)
+
+2. DICTIONARY (Hash Map)
+   - BLOOD_COMPATIBILITY dictionary
+   - O(1) lookup for compatibility check
+
+3. EARLIEST DEADLINE FIRST (EDF)
+   - Scheduling algorithm in PatientQueue
+   - Deadline-aware patient prioritization
+
+4. LINEAR SEARCH
+   - Donor search functionality
+   - CSV file parsing
+
+IN C++ BACKEND (prog1.cpp):
+──────────────────────────
+1. Hash Table with Chaining - O(1) donor lookup
+2. AVL Tree - O(log n) balanced donor name search
+3. Graph (Adjacency List) - Blood compatibility relations
+4. Trie - O(k) autocomplete for donor names
+5. LRU Cache - O(1) recent donor caching
+6. Union-Find - O(α(n)) blood type grouping
+7. Segment Tree - O(log n) range queries
+8. Prim's MST - O(E log V) network optimization
+9. Dijkstra's Algorithm - O(V log V + E) shortest paths
+10. Min-Heap - O(log n) patient priority queue
+11. Input Validation - Data integrity checks
+
+================================================================================
+                          8. HOW TO RUN
+================================================================================
+
+PREREQUISITES:
+─────────────
+• Python 3.x installed
+• Flask library installed (pip install flask)
+• Web browser
+
+RUNNING THE WEB APPLICATION:
+───────────────────────────
+1. Open terminal in CP folder:
+   cd "c:\Users\User\Desktop\VIT\SY\Sem 3\Data Structures & Algorithm (C++)\CP"
+
+2. Run Flask application:
+   python app.py
+
+3. Open browser and navigate to:
+   http://127.0.0.1:5000
+
+4. The application will be running on localhost port 5000
+
+RUNNING THE C++ CONSOLE APPLICATION:
+───────────────────────────────────
+1. Navigate to cpp_Backend folder
+
+2. Either run the pre-compiled executable:
+   ./prog1.exe
+
+3. Or compile and run:
+   g++ -o prog1 prog1.cpp
+   ./prog1
+
+4. Follow the menu prompts in the console
+
+================================================================================
+                          9. API ENDPOINTS
+================================================================================
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ METHOD │ ENDPOINT                │ DESCRIPTION                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ GET    │ /                       │ Dashboard with statistics               │
+│ GET    │ /donors                 │ Donor list with search                  │
+│ POST   │ /add_donor              │ Register new donor                      │
+│ POST   │ /delete_donor/<id>      │ Remove donor                            │
+│ GET    │ /inventory              │ Blood stock levels                      │
+│ GET    │ /transactions           │ Transaction history                     │
+│ POST   │ /add_transaction        │ Record donation/issue                   │
+│ GET    │ /patients               │ Patient queue                           │
+│ POST   │ /add_patient            │ Add patient to queue (JSON response)    │
+│ POST   │ /serve_patient          │ Dequeue patient (JSON response)         │
+│ GET    │ /peek_patient           │ View next patient (JSON response)       │
+│ GET    │ /compatibility          │ Compatibility checker page              │
+│ POST   │ /check_compatibility    │ Check two blood types (JSON response)   │
+│ POST   │ /find_compatible_donors │ List compatible donors (JSON response)  │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+                       10. FUTURE ENHANCEMENTS
+================================================================================
+
+POTENTIAL IMPROVEMENTS:
+──────────────────────
+1. Database Integration
+   - Replace text files with SQLite or MySQL
+   - Better data integrity and concurrent access
+
+2. User Authentication
+   - Login system for staff
+   - Role-based access control
+
+3. Blood Expiry Tracking
+   - Track donation dates
+   - Alert on near-expiry blood
+
+4. Email/SMS Notifications
+   - Donor reminders
+   - Low stock alerts
+
+5. Reporting & Analytics
+   - Charts and graphs
+   - Monthly/yearly reports
+
+6. Blood Request Management
+   - Hospital blood requests
+   - Cross-blood bank networking
+
+7. Mobile Responsive Enhancement
+   - PWA support
+   - Mobile app version
+
+8. Donor Appointment Scheduling
+   - Calendar integration
+   - Appointment reminders
+
+================================================================================
+                          END OF DOCUMENT
+================================================================================
+
+Document: project.txt
+Generated: December 2025
+Lines: ~800
+Purpose: Complete project documentation for Blood Bank Management System
+
+This document provides a comprehensive overview of all files, folders, and
+functionality in the Blood Bank Management System project.
+
+================================================================================

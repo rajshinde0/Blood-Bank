@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blood Inventory - Blood Bank</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-boxes"></i> Blood Inventory</h1>
+            <p>Current blood stock levels</p>
+        </header>
+
+        <nav>
+            <ul>
+                <li><a href="/"><i class="fas fa-home"></i> Dashboard</a></li>
+                <li><a href="/donors"><i class="fas fa-users"></i> Donors</a></li>
+                <li><a href="/inventory" class="active"><i class="fas fa-boxes"></i> Inventory</a></li>
+                <li><a href="/transactions"><i class="fas fa-exchange-alt"></i> Transactions</a></li>
+                <li><a href="/patients"><i class="fas fa-user-injured"></i> Patients</a></li>
+                <li><a href="/compatibility"><i class="fas fa-heartbeat"></i> Compatibility</a></li>
+            </ul>
+        </nav>
+
+        <main>
+            <div class="dashboard">
+                {% for item in inventory %}
+                {% if item[1]|int > 10 %}
+                <div class="stat-card" style="background: linear-gradient(135deg, #27ae60, #229954);">
+                {% elif item[1]|int > 5 %}
+                <div class="stat-card" style="background: linear-gradient(135deg, #f39c12, #e67e22);">
+                {% else %}
+                <div class="stat-card" style="background: linear-gradient(135deg, #e74c3c, #c0392b);">
+                {% endif %}
+                    <h3><i class="fas fa-tint"></i> {{ item[0] }}</h3>
+                    <div class="number">{{ item[1] }} <span style="font-size: 1.5rem;">units</span></div>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="table-container">
+                <h3 style="padding: 20px; margin: 0; color: #2c3e50; border-bottom: 2px solid #eee;">
+                    <i class="fas fa-chart-bar"></i> Detailed Inventory Status
+                </h3>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Blood Group</th>
+                            <th>Available Units</th>
+                            <th>Status</th>
+                            <th>Recommendation</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in inventory %}
+                        <tr>
+                            <td><span class="blood-group">{{ item[0] }}</span></td>
+                            <td style="font-size: 1.3rem; font-weight: bold;">{{ item[1] }}</td>
+                            <td>
+                                {% if item[1]|int > 10 %}
+                                    <span style="color: #27ae60; font-weight: bold;">
+                                        <i class="fas fa-check-circle"></i> Sufficient
+                                    </span>
+                                {% elif item[1]|int > 5 %}
+                                    <span style="color: #f39c12; font-weight: bold;">
+                                        <i class="fas fa-exclamation-triangle"></i> Low
+                                    </span>
+                                {% else %}
+                                    <span style="color: #e74c3c; font-weight: bold;">
+                                        <i class="fas fa-times-circle"></i> Critical
+                                    </span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if item[1]|int <= 5 %}
+                                    <span style="color: #e74c3c; font-weight: 600;">
+                                        <i class="fas fa-exclamation"></i> Urgent donation needed
+                                    </span>
+                                {% elif item[1]|int <= 10 %}
+                                    <span style="color: #f39c12;">
+                                        <i class="fas fa-info-circle"></i> Schedule donation drive
+                                    </span>
+                                {% else %}
+                                    <span style="color: #27ae60;">
+                                        <i class="fas fa-thumbs-up"></i> Stock is healthy
+                                    </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

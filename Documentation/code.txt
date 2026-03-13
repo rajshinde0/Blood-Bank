@@ -1,0 +1,1020 @@
+================================================================================
+                        CODE EXPLANATION - prog1.cpp
+                     Blood Bank Management System (C++)
+                           Complete Code Walkthrough
+================================================================================
+
+FILE: cpp_Backend/prog1.cpp
+TOTAL LINES: ~2,200
+LANGUAGE: C++
+PURPOSE: Backend for Blood Bank Management with 12+ DSA implementations
+
+================================================================================
+                            TABLE OF CONTENTS
+================================================================================
+
+1. Header Files & Includes (Lines 1-15)
+2. Data Structures - Donor & Patient (Lines 17-33)
+3. AVL Tree Implementation (Lines 35-196)
+4. Blood Compatibility Graph (Lines 198-450)
+5. Trie for Autocomplete (Lines 452-570)
+6. LRU Cache (Lines 572-638)
+7. Union-Find / Disjoint Set (Lines 640-727)
+8. Segment Tree (Lines 729-857)
+9. Minimum Spanning Tree - Kruskal's (Lines 859-1004)
+10. Dijkstra's Algorithm - Shortest Path (Lines 1006-1144)
+11. Priority Queue - Min Heap (Lines 1146-1310)
+12. Global Variables & Hash Function (Lines 1312-1330)
+13. Input Validation Functions (Lines 1332-1378)
+14. Donor Management Functions (Lines 1380-1540)
+15. Patient Management Functions (Lines 1542-1720)
+16. Feature Functions (Lines 1722-1990)
+17. Main Menu & Switch (Lines 1992-2196)
+
+================================================================================
+1. HEADER FILES & INCLUDES (Lines 1-15)
+================================================================================
+
+#include <iostream>      // Input/Output operations (cin, cout)
+#include <fstream>       // File handling (ifstream, ofstream)
+#include <string>        // String class
+#include <iomanip>       // Output formatting (setw, left)
+#include <vector>        // Dynamic arrays
+#include <queue>         // Priority queue for Dijkstra's
+#include <limits>        // INT_MAX for infinity
+#include <climits>       // Alternative INT_MAX definition
+#include <algorithm>     // sort(), reverse(), max()
+#include <list>          // Doubly linked list for LRU Cache
+#include <unordered_map> // Hash map for O(1) lookup
+#include <cctype>        // Character functions (isalpha, tolower, isdigit)
+#include <stack>         // Stack data structure
+#include <ctime>         // Time functions for deadlines
+
+using namespace std;     // Avoid std:: prefix
+
+================================================================================
+2. DATA STRUCTURES - DONOR & PATIENT (Lines 17-33)
+================================================================================
+
+DONOR STRUCTURE:
+----------------
+struct Donor {
+    int id;              // Unique identifier (e.g., 1001)
+    string name;         // Full name (e.g., "John Doe")
+    string bloodGroup;   // Blood type (e.g., "O+", "AB-")
+    string city;         // Location (e.g., "Mumbai")
+    string phone;        // Contact number
+    Donor *next;         // Pointer for hash table chaining
+};
+
+PURPOSE: Stores donor information with linked list pointer for collision handling
+USED IN: Hash table, AVL tree, Trie, LRU Cache, Union-Find
+
+PATIENT STRUCTURE:
+------------------
+struct Patient {
+    int id;                    // Unique identifier
+    string name;               // Full name
+    string bloodGroupRequired; // Blood type needed
+    string city;               // Location
+    string phone;              // Contact number
+    int age;                   // Patient age
+    int urgency;               // 1=Critical, 2=Urgent, 3=Normal
+    time_t deadline;           // When patient must be served
+    time_t arrivalTime;        // When patient was added
+    
+    Patient() : id(0), age(0), urgency(3), deadline(0), arrivalTime(0) {}
+};
+
+PURPOSE: Stores patient information with priority fields for scheduling
+USED IN: Priority Queue (Min-Heap)
+
+================================================================================
+3. AVL TREE IMPLEMENTATION (Lines 35-196)
+================================================================================
+
+WHAT IS AVL TREE?
+-----------------
+Self-balancing Binary Search Tree where the height difference between
+left and right subtrees (balance factor) is at most 1 for every node.
+
+NODE STRUCTURE:
+---------------
+struct AVLNode {
+    string donorName;    // Key for searching
+    int donorID;         // Associated donor ID
+    int height;          // Height of subtree rooted at this node
+    AVLNode *left;       // Left child pointer
+    AVLNode *right;      // Right child pointer
+};
+
+CLASS: DonorBST
+---------------
+PRIVATE METHODS:
+
+1. getHeight(AVLNode *node)
+   - Returns height of node (0 if null)
+   - Used for balance factor calculation
+
+2. getBalanceFactor(AVLNode *node)
+   - Returns: height(left) - height(right)
+   - Balanced if result is -1, 0, or 1
+
+3. updateHeight(AVLNode *node)
+   - Recalculates height after rotations
+   - height = 1 + max(left_height, right_height)
+
+4. rightRotate(AVLNode *y)
+   - Performs right rotation for LL and LR cases
+   - Returns new root of subtree
+   
+   BEFORE:        AFTER:
+       y            x
+      / \          / \
+     x   T3  =>  T1   y
+    / \              / \
+   T1  T2          T2  T3
+
+5. leftRotate(AVLNode *x)
+   - Performs left rotation for RR and RL cases
+   - Returns new root of subtree
+   
+   BEFORE:        AFTER:
+     x              y
+    / \            / \
+   T1  y    =>    x   T3
+      / \        / \
+     T2  T3    T1  T2
+
+6. balance(AVLNode *node)
+   - Checks balance factor and applies appropriate rotation
+   - Four cases handled:
+     * LL Case (balanceFactor > 1, left child left-heavy): rightRotate
+     * LR Case (balanceFactor > 1, left child right-heavy): leftRotate left, rightRotate
+     * RR Case (balanceFactor < -1, right child right-heavy): leftRotate
+     * RL Case (balanceFactor < -1, right child left-heavy): rightRotate right, leftRotate
+
+7. insertHelper(AVLNode *node, string name, int id)
+   - Recursive BST insertion
+   - Calls balance() after insertion to maintain AVL property
+
+8. searchHelper(AVLNode *node, string name)
+   - Recursive BST search
+   - Returns node if found, nullptr otherwise
+
+PUBLIC METHODS:
+
+1. insert(string name, int id)
+   - Public wrapper for insertHelper
+   - Inserts donor name with associated ID
+
+2. search(string name)
+   - Public wrapper for searchHelper
+   - Returns donor ID if found, -1 otherwise
+
+MENU OPTION: 8 (Search Donor by Name)
+
+================================================================================
+4. BLOOD COMPATIBILITY GRAPH (Lines 198-450)
+================================================================================
+
+WHAT IS IT?
+-----------
+Graph representation of blood donation compatibility using adjacency matrix.
+8 blood types as vertices, edges represent "can donate to" relationship.
+
+CLASS: BloodCompatibilityGraph
+------------------------------
+PRIVATE MEMBERS:
+
+- NUM_BLOOD_TYPES = 8 (constant)
+- adjacencyMatrix[8][8] (boolean 2D array)
+- bloodTypes[8] = {"O-", "O+", "A-", "A+", "B-", "B+", "AB-", "AB+"}
+
+PRIVATE METHODS:
+
+1. getIndex(string bloodGroup)
+   - Converts blood type string to array index (0-7)
+   - Returns -1 if invalid blood type
+
+CONSTRUCTOR - Sets up compatibility rules:
+
+O- (index 0): Universal donor - can donate to ALL types
+    adjacencyMatrix[0][0-7] = true
+
+O+ (index 1): Can donate to O+, A+, B+, AB+
+A- (index 2): Can donate to A-, A+, AB-, AB+
+A+ (index 3): Can donate to A+, AB+
+B- (index 4): Can donate to B-, B+, AB-, AB+
+B+ (index 5): Can donate to B+, AB+
+AB- (index 6): Can donate to AB-, AB+
+AB+ (index 7): Can donate to AB+ only (Universal recipient)
+
+PUBLIC METHODS:
+
+1. isCompatible(string donorGroup, string patientGroup)
+   - Returns true if donation is safe
+   - O(1) lookup in adjacency matrix
+   - MENU OPTION: 9
+
+2. displayCompatibilityMatrix()
+   - Prints 8x8 matrix with ✓ and ✗ symbols
+   - MENU OPTION: 10
+
+3. BFS(string startBloodType)
+   - Breadth-First Search traversal from given blood type
+   - Uses queue for level-order exploration
+   - Shows all reachable blood types in BFS order
+   - MENU OPTION: 18
+   
+   Algorithm:
+   a) Start with source in queue, mark visited
+   b) While queue not empty:
+      - Dequeue front vertex
+      - Print it
+      - Enqueue all unvisited adjacent vertices
+
+4. DFS(string startBloodType)
+   - Depth-First Search traversal from given blood type
+   - Uses recursion (implicit stack)
+   - Shows all reachable blood types in DFS order
+   - MENU OPTION: 19
+   
+   Algorithm (DFSHelper):
+   a) Mark current vertex visited
+   b) Print current vertex
+   c) Recursively visit all unvisited adjacent vertices
+
+5. findAllPaths(source, dest, path, allPaths)
+   - Backtracking algorithm to find ALL paths
+   - Uses vector to track current path
+   - Stores all valid paths in allPaths
+   - Avoids cycles by checking if node already in path
+
+6. displayAllCompatibilityPaths(donorType, patientType)
+   - Wrapper for findAllPaths
+   - Displays all possible donation chains
+   - MENU OPTION: 20
+
+================================================================================
+5. TRIE FOR AUTOCOMPLETE (Lines 452-570)
+================================================================================
+
+WHAT IS TRIE?
+-------------
+Tree-like data structure where each node represents a character.
+Paths from root spell out stored words. Excellent for prefix matching.
+
+NODE STRUCTURE:
+---------------
+struct TrieNode {
+    TrieNode *children[26];  // 26 letters (a-z)
+    bool isEndOfWord;        // Marks complete word
+    vector<int> donorIDs;    // IDs of donors with this exact name
+};
+
+CLASS: DonorTrie
+----------------
+PRIVATE METHODS:
+
+1. getIndex(char c)
+   - Converts character to index (0-25)
+   - Uses tolower() for case-insensitive search
+
+2. collectAllNames(TrieNode *node, string prefix, vector<pair<string,int>> &results)
+   - Recursive function to gather all words from a node
+   - Used after navigating to prefix position
+   - Adds (name, ID) pairs to results
+
+PUBLIC METHODS:
+
+1. insert(string name, int donorID)
+   - Inserts donor name into Trie
+   - Creates nodes for each character if not exists
+   - Marks end of word and stores donor ID
+   
+   Example: Insert "John" with ID 1001
+   Root -> J -> O -> H -> N (isEndOfWord=true, donorIDs=[1001])
+
+2. searchPrefix(string prefix)
+   - Returns all donors whose names start with prefix
+   - Navigates to prefix position, then collects all names
+   - MENU OPTION: 14
+
+3. search(string name)
+   - Exact match search
+   - Returns true if name exists in Trie
+
+INTEGRATION:
+- Donors added to Trie in addDonor() function
+- Autocomplete results shown with donor details from hash table
+
+================================================================================
+6. LRU CACHE (Lines 572-638)
+================================================================================
+
+WHAT IS LRU CACHE?
+------------------
+Cache that stores recently accessed items. When full, evicts
+Least Recently Used item. Combines doubly linked list + hash map.
+
+CLASS: LRUCache
+---------------
+PRIVATE MEMBERS:
+
+- int capacity (max items = 10)
+- list<pair<int, Donor*>> dll (doubly linked list)
+  * Front = Most Recently Used
+  * Back = Least Recently Used
+- unordered_map<int, iterator> cache (for O(1) access)
+
+PUBLIC METHODS:
+
+1. LRUCache(int cap)
+   - Constructor sets capacity
+
+2. get(int donorID)
+   - Returns Donor* if in cache, nullptr otherwise
+   - On cache hit: moves item to front (most recent)
+   - MENU OPTION: 15 (View Cache)
+   
+   Algorithm:
+   a) Check if donorID in hash map
+   b) If not found, return nullptr (cache miss)
+   c) If found:
+      - Get iterator from hash map
+      - Remove from current position
+      - Insert at front
+      - Update hash map with new iterator
+      - Return Donor*
+
+3. put(int donorID, Donor* donor)
+   - Adds donor to cache
+   - Evicts LRU if cache full
+   
+   Algorithm:
+   a) If donorID already exists, remove old entry
+   b) If cache full, remove back (LRU) and erase from map
+   c) Insert new entry at front
+   d) Update hash map with iterator
+
+4. displayCache()
+   - Shows all cached donors (most recent first)
+
+INTEGRATION:
+- Donors added to cache in addDonor()
+- Cache checked first in autocompleteSearch()
+
+================================================================================
+7. UNION-FIND / DISJOINT SET (Lines 640-727)
+================================================================================
+
+WHAT IS UNION-FIND?
+-------------------
+Data structure to manage disjoint sets. Supports two operations:
+- Find: Which set does element belong to?
+- Union: Merge two sets
+
+CLASS: DonorUnionFind
+---------------------
+PRIVATE MEMBERS:
+
+- unordered_map<int, int> parent (donorID -> parent donorID)
+- unordered_map<int, int> rank (donorID -> tree height)
+
+PUBLIC METHODS:
+
+1. makeSet(int donorID)
+   - Creates new set with single element
+   - parent[id] = id (self-parent)
+   - rank[id] = 0
+
+2. find(int x)
+   - Returns root of set containing x
+   - Uses PATH COMPRESSION optimization
+   
+   Path Compression:
+   - During find, make every node point directly to root
+   - Flattens tree for faster future finds
+   
+   Before find(4): 1 <- 2 <- 3 <- 4
+   After find(4):  1 <- 2, 1 <- 3, 1 <- 4
+
+3. unionSets(int x, int y)
+   - Merges sets containing x and y
+   - Uses UNION BY RANK optimization
+   
+   Union by Rank:
+   - Attach smaller tree under larger tree
+   - Keeps trees shallow
+   
+   If rank[rootX] < rank[rootY]: parent[rootX] = rootY
+   If rank[rootX] > rank[rootY]: parent[rootY] = rootX
+   If equal: parent[rootY] = rootX, rank[rootX]++
+
+4. areConnected(int x, int y)
+   - Returns true if x and y in same set
+   - MENU OPTION: 17
+
+5. displayNetworks()
+   - Groups all donors by their root
+   - Shows connected components
+   - MENU OPTION: 16
+
+INTEGRATION:
+- Donors added to Union-Find in addDonor()
+- connectDonorsByBloodType() unions compatible donors
+
+================================================================================
+8. SEGMENT TREE (Lines 729-857)
+================================================================================
+
+WHAT IS SEGMENT TREE?
+---------------------
+Binary tree for efficient range queries on arrays.
+Each node stores aggregate value (sum, min, max) of a range.
+
+CLASS: InventorySegmentTree
+---------------------------
+PRIVATE MEMBERS:
+
+- vector<int> tree (segment tree array, size 4*n)
+- vector<int> inventory (original data)
+- int n (number of elements)
+
+PRIVATE METHODS:
+
+1. buildTree(int node, int start, int end)
+   - Recursively builds segment tree
+   - Base case: start == end (leaf node)
+   - Recursive: build left and right children, sum them
+   
+   Tree Structure for [10, 20, 30, 40]:
+                 [100]           <- root (sum of 0-3)
+                /     \
+            [30]       [70]      <- sum of 0-1, 2-3
+           /    \     /    \
+        [10]  [20] [30]  [40]   <- leaf nodes
+
+2. queryRange(int node, int start, int end, int l, int r)
+   - Returns sum of elements in range [l, r]
+   
+   Three cases:
+   a) No overlap (r < start || l > end): return 0
+   b) Complete overlap (l <= start && end <= r): return tree[node]
+   c) Partial overlap: recurse both children, sum results
+
+3. updateTree(int node, int start, int end, int idx, int value)
+   - Updates single element and all affected nodes
+   - Propagates change up to root
+
+PUBLIC METHODS:
+
+1. InventorySegmentTree(vector<int> data)
+   - Constructor builds tree from data
+   - MENU OPTION: 21 (Setup)
+
+2. getRangeSum(int l, int r)
+   - Returns sum of inventory[l] to inventory[r]
+   - O(log n) time complexity
+   - MENU OPTION: 22 (Query)
+
+3. updateInventory(int idx, int value)
+   - Updates inventory[idx] to value
+   - O(log n) time complexity
+   - MENU OPTION: 23 (Update)
+
+4. displayInventory()
+   - Shows all days and total
+
+================================================================================
+9. MINIMUM SPANNING TREE - KRUSKAL'S (Lines 859-1004)
+================================================================================
+
+WHAT IS MST?
+------------
+Subset of edges that connects all vertices with minimum total weight.
+Kruskal's algorithm: greedy approach using sorted edges.
+
+EDGE STRUCTURE:
+---------------
+struct MSTEdge {
+    int src, dest, weight;
+    bool operator<(...) { return weight < other.weight; }
+};
+
+CLASS: BloodBankMST
+-------------------
+PRIVATE MEMBERS:
+
+- int numBanks (number of blood banks)
+- vector<MSTEdge> edges (all connections)
+- vector<string> bankNames
+
+PRIVATE METHODS:
+
+1. findParent(vector<int>& parent, int x)
+   - Union-Find for cycle detection
+   - Uses path compression
+
+2. unionSets(vector<int>& parent, vector<int>& rank, int x, int y)
+   - Merges two sets
+   - Uses union by rank
+
+PUBLIC METHODS:
+
+1. BloodBankMST(int banks)
+   - Constructor initializes structures
+   - MENU OPTION: 24 (Setup)
+
+2. addBank(int index, string name)
+   - Sets bank name
+
+3. addConnection(int bank1, int bank2, int cost)
+   - Adds edge to edges vector
+
+4. kruskalMST()
+   - Returns vector of MST edges
+   
+   Algorithm:
+   a) Sort all edges by weight (ascending)
+   b) Initialize Union-Find (each vertex is own parent)
+   c) For each edge (in sorted order):
+      - If src and dest in different sets:
+        * Add edge to MST
+        * Union(src, dest)
+      - Stop when MST has V-1 edges
+
+5. displayMST()
+   - Shows optimal connections and total cost
+   - MENU OPTION: 25 (Display)
+
+6. getTotalCost()
+   - Returns sum of all MST edge weights
+
+================================================================================
+10. DIJKSTRA'S ALGORITHM - SHORTEST PATH (Lines 1006-1144)
+================================================================================
+
+WHAT IS DIJKSTRA'S?
+-------------------
+Algorithm to find shortest path from source to all vertices
+in a weighted graph with non-negative edges.
+
+EDGE STRUCTURE:
+---------------
+struct Edge {
+    int destination;
+    int distance;
+};
+
+CLASS: BloodDeliveryGraph
+-------------------------
+PRIVATE MEMBERS:
+
+- int numLocations
+- vector<vector<Edge>> adjList (adjacency list)
+- vector<string> locationNames
+
+PUBLIC METHODS:
+
+1. BloodDeliveryGraph(int V)
+   - Constructor initializes V locations
+   - MENU OPTION: 12 (Setup)
+
+2. addLocation(int index, string name)
+   - Sets location name
+
+3. addRoute(int from, int to, int distance)
+   - Adds bidirectional edge to adjacency list
+
+4. dijkstra(int source, int destination)
+   - Returns vector of vertex indices (path)
+   
+   Algorithm:
+   a) Initialize:
+      - dist[source] = 0, all others = INT_MAX
+      - parent[] = -1 (for path reconstruction)
+      - visited[] = false
+      - Priority queue with (distance, vertex) pairs
+   
+   b) Add (0, source) to priority queue
+   
+   c) While queue not empty:
+      - Extract vertex u with minimum distance
+      - If already visited, skip
+      - Mark u as visited
+      - For each neighbor v of u:
+        * If dist[u] + weight(u,v) < dist[v]:
+          - Update dist[v]
+          - Set parent[v] = u
+          - Add (dist[v], v) to queue
+   
+   d) Reconstruct path using parent array
+
+5. displayShortestPath(int source, int destination)
+   - Shows route and total distance
+   - MENU OPTION: 13 (Find Route)
+
+6. displayAllRoutes()
+   - Shows all connections in network
+
+================================================================================
+11. PRIORITY QUEUE - MIN HEAP (Lines 1146-1310)
+================================================================================
+
+WHAT IS MIN HEAP?
+-----------------
+Complete binary tree where parent has higher priority (lower value)
+than children. Root always has highest priority.
+
+CLASS: PatientQueue
+-------------------
+PRIVATE MEMBERS:
+
+- vector<Patient> heap (dynamic array)
+
+PRIVATE METHODS:
+
+1. hasHigherPriority(const Patient& p1, const Patient& p2)
+   - Compares two patients for priority
+   
+   Priority Order (EDF - Earliest Deadline First):
+   a) Lower urgency number = higher priority (1 > 2 > 3)
+   b) If urgency equal: earlier deadline = higher priority
+   c) If no deadline (0): treated as lowest priority
+
+2. bubbleUp(int index)
+   - Moves newly added element up to correct position
+   - Compares with parent, swaps if higher priority
+   - Recursively continues until heap property satisfied
+
+3. bubbleDown(int index)
+   - Moves root element down after dequeue
+   - Compares with children, swaps with higher priority child
+   - Recursively continues until heap property satisfied
+
+PUBLIC METHODS:
+
+1. PatientQueue()
+   - Default constructor (vector auto-initializes)
+
+2. isEmpty()
+   - Returns heap.empty()
+
+3. isFull()
+   - Always returns false (vector grows dynamically)
+
+4. enqueue(Patient p)
+   - Adds patient to heap
+   - MENU OPTION: 5
+   
+   Algorithm:
+   a) Add patient to end of vector
+   b) Call bubbleUp on last index
+
+5. dequeue()
+   - Removes and returns highest priority patient
+   - MENU OPTION: 7
+   
+   Algorithm:
+   a) Save root (highest priority)
+   b) Move last element to root
+   c) Remove last element
+   d) Call bubbleDown on root
+   e) Return saved patient
+
+6. peek()
+   - Returns highest priority patient without removing
+
+7. displayQueue()
+   - Shows all patients with urgency and deadline info
+   - MENU OPTION: 6
+
+8. getSize()
+   - Returns heap.size()
+
+================================================================================
+12. GLOBAL VARIABLES & HASH FUNCTION (Lines 1312-1330)
+================================================================================
+
+CONSTANTS:
+----------
+const int TABLE_SIZE = 97;  // Prime number for hash distribution
+
+GLOBAL INSTANCES:
+-----------------
+Donor *hashTable[TABLE_SIZE] = {nullptr};  // Hash table array
+DonorBST donorBST;                         // AVL tree for name search
+BloodCompatibilityGraph bloodGraph;        // Compatibility graph
+PatientQueue patientQueue;                 // Priority queue
+BloodDeliveryGraph *deliveryNetwork = nullptr;  // Dijkstra's graph
+DonorTrie donorTrie;                       // Trie for autocomplete
+LRUCache donorCache(10);                   // LRU cache (capacity 10)
+DonorUnionFind donorNetwork;               // Union-Find for networks
+InventorySegmentTree *inventoryTree = nullptr;  // Segment tree
+BloodBankMST *bankMST = nullptr;           // MST for blood banks
+
+HASH FUNCTION:
+--------------
+int hashFunc(int id) {
+    return id % TABLE_SIZE;
+}
+
+- Uses division method with prime modulo
+- Prime number (97) reduces collisions
+- Returns index 0-96
+
+================================================================================
+13. INPUT VALIDATION FUNCTIONS (Lines 1332-1378)
+================================================================================
+
+1. isValidBloodGroup(string bloodGroup)
+   - Checks if blood type is one of 8 valid types
+   - Returns true/false
+
+2. isValidAge(int age)
+   - Checks if age is between 1 and 120
+   - Returns true/false
+
+3. isValidPhone(string phone)
+   - Checks if phone has 10+ digits
+   - Checks if all characters are digits
+   - Returns true/false
+
+4. isDuplicateID(int id)
+   - Searches hash table for existing ID
+   - Returns true if duplicate found
+
+USAGE:
+- Called in addDonor() and addPatient()
+- Returns early with error message if validation fails
+- Prevents data corruption and duplicate entries
+
+================================================================================
+14. DONOR MANAGEMENT FUNCTIONS (Lines 1380-1540)
+================================================================================
+
+1. addDonor()
+   - MENU OPTION: 1
+   
+   Steps:
+   a) Create new Donor struct
+   b) Validate ID (check duplicate)
+   c) Validate name (non-empty)
+   d) Validate blood group (format)
+   e) Validate city (non-empty)
+   f) Validate phone (10+ digits)
+   g) Add to hash table (separate chaining)
+   h) Add to AVL tree (donorBST.insert)
+   i) Add to Trie (donorTrie.insert)
+   j) Add to Union-Find (donorNetwork.makeSet)
+   k) Add to LRU Cache (donorCache.put)
+   l) Save to donors.txt file
+
+2. displayDonors()
+   - MENU OPTION: 2
+   - Iterates through all hash table slots
+   - Traverses linked lists at each slot
+   - Prints donor details in formatted table
+
+3. searchDonor()
+   - MENU OPTION: 3
+   - Searches by ID using hash function
+   - O(1) average time complexity
+
+4. searchDonorByName()
+   - MENU OPTION: 8
+   - Uses AVL tree (donorBST.search)
+   - Returns donor ID, then looks up in hash table
+   - O(log n) time complexity
+
+5. deleteDonor()
+   - MENU OPTION: 4
+   - Finds donor in hash table
+   - Updates linked list pointers
+   - Frees memory with delete
+
+================================================================================
+15. PATIENT MANAGEMENT FUNCTIONS (Lines 1542-1720)
+================================================================================
+
+1. addPatient()
+   - MENU OPTION: 5
+   
+   Steps:
+   a) Create Patient struct
+   b) Validate all fields
+   c) Get urgency level (1-3)
+   d) Optionally set deadline (hours from now)
+   e) Set arrivalTime to current time
+   f) Enqueue to priority queue
+   g) Save to patients.txt file
+
+2. displayPatients()
+   - MENU OPTION: 6
+   - Calls patientQueue.displayQueue()
+   - Shows urgency and deadline information
+
+3. displayPatientsFromFile()
+   - MENU OPTION: 11
+   - Reads patients.txt directly
+   - Shows historical patient data
+
+4. serveMostCriticalPatient()
+   - MENU OPTION: 7
+   - Dequeues highest priority patient
+   - Displays patient details
+   - Shows remaining queue size
+
+================================================================================
+16. FEATURE FUNCTIONS (Lines 1722-1990)
+================================================================================
+
+1. autocompleteSearch()
+   - MENU OPTION: 14
+   - Uses Trie prefix search
+   - Checks LRU cache first for each result
+   - Falls back to hash table on cache miss
+
+2. connectDonorsByBloodType()
+   - MENU OPTION: 16
+   - Iterates all donor pairs
+   - Unions donors with compatible blood types
+
+3. checkDonorConnection()
+   - MENU OPTION: 17
+   - Uses Union-Find areConnected()
+
+4. performBFS()
+   - MENU OPTION: 18
+   - Calls bloodGraph.BFS()
+
+5. performDFS()
+   - MENU OPTION: 19
+   - Calls bloodGraph.DFS()
+
+6. findCompatibilityPaths()
+   - MENU OPTION: 20
+   - Calls bloodGraph.displayAllCompatibilityPaths()
+
+7. displayCacheContents()
+   - MENU OPTION: 15
+   - Calls donorCache.displayCache()
+
+8. setupInventorySystem()
+   - MENU OPTION: 21
+   - Creates new InventorySegmentTree
+
+9. queryInventoryRange()
+   - MENU OPTION: 22
+   - Calls inventoryTree->getRangeSum()
+
+10. updateInventoryDay()
+    - MENU OPTION: 23
+    - Calls inventoryTree->updateInventory()
+
+11. setupBloodBankMST()
+    - MENU OPTION: 24
+    - Creates new BloodBankMST
+    - Adds banks and connections
+
+12. displayMSTResult()
+    - MENU OPTION: 25
+    - Calls bankMST->displayMST()
+
+13. checkBloodCompatibility()
+    - MENU OPTION: 9
+    - Calls bloodGraph.isCompatible()
+
+================================================================================
+17. MAIN MENU & SWITCH (Lines 1992-2196)
+================================================================================
+
+int main() {
+    int choice;
+    while (true) {
+        // Display 26 menu options
+        cout << "1. Add Donor\n";
+        cout << "2. Display Donors\n";
+        ... (all 26 options)
+        cout << "26. Exit\n";
+        
+        cin >> choice;
+        
+        switch (choice) {
+            case 1: addDonor(); break;
+            case 2: displayDonors(); break;
+            case 3: searchDonor(); break;
+            case 4: deleteDonor(); break;
+            case 5: addPatient(); break;
+            case 6: displayPatients(); break;
+            case 7: serveMostCriticalPatient(); break;
+            case 8: searchDonorByName(); break;
+            case 9: checkBloodCompatibility(); break;
+            case 10: bloodGraph.displayCompatibilityMatrix(); break;
+            case 11: displayPatientsFromFile(); break;
+            case 12: // Setup delivery network (inline code)
+            case 13: // Find shortest route (inline code)
+            case 14: autocompleteSearch(); break;
+            case 15: displayCacheContents(); break;
+            case 16: connectDonorsByBloodType(); break;
+            case 17: checkDonorConnection(); break;
+            case 18: performBFS(); break;
+            case 19: performDFS(); break;
+            case 20: findCompatibilityPaths(); break;
+            case 21: setupInventorySystem(); break;
+            case 22: queryInventoryRange(); break;
+            case 23: updateInventoryDay(); break;
+            case 24: setupBloodBankMST(); break;
+            case 25: displayMSTResult(); break;
+            case 26:
+                // Cleanup memory
+                delete deliveryNetwork;
+                delete inventoryTree;
+                delete bankMST;
+                return 0;
+            default: cout << "Invalid choice.\n";
+        }
+    }
+}
+
+MEMORY CLEANUP ON EXIT:
+- Deletes dynamically allocated graphs/trees
+- Prevents memory leaks
+
+================================================================================
+                        COMPLETE FILE STRUCTURE SUMMARY
+================================================================================
+
+LINES      | CONTENT
+-----------|--------------------------------------------------
+1-15       | Header includes
+17-33      | Donor and Patient structs
+35-196     | AVL Tree (DonorBST class)
+198-450    | Blood Compatibility Graph + BFS/DFS
+452-570    | Trie (DonorTrie class)
+572-638    | LRU Cache class
+640-727    | Union-Find (DonorUnionFind class)
+729-857    | Segment Tree (InventorySegmentTree class)
+859-1004   | MST (BloodBankMST class)
+1006-1144  | Dijkstra's (BloodDeliveryGraph class)
+1146-1310  | Priority Queue (PatientQueue class)
+1312-1330  | Global variables and hash function
+1332-1378  | Input validation functions
+1380-1540  | Donor management functions
+1542-1720  | Patient management functions
+1722-1990  | Feature functions
+1992-2196  | Main menu and switch statement
+
+TOTAL: ~2,200 lines of C++ code
+
+================================================================================
+                        DATA FLOW DIAGRAM
+================================================================================
+
+                    +------------------+
+                    |   USER INPUT     |
+                    +--------+---------+
+                             |
+                             v
+                    +--------+---------+
+                    |  INPUT VALIDATION |
+                    +--------+---------+
+                             |
+        +--------------------+--------------------+
+        |                    |                    |
+        v                    v                    v
++-------+------+    +--------+-------+    +------+-------+
+|  HASH TABLE  |    |   AVL TREE     |    | PRIORITY QUEUE|
+| (Donor by ID)|    | (Donor by Name)|    |  (Patients)   |
++-------+------+    +--------+-------+    +------+-------+
+        |                    |                    |
+        +--------------------+--------------------+
+                             |
+        +--------------------+--------------------+
+        |                    |                    |
+        v                    v                    v
++-------+------+    +--------+-------+    +------+-------+
+|    TRIE      |    |   LRU CACHE    |    | UNION-FIND   |
+| (Autocomplete)|   | (Fast Access)  |    | (Networks)   |
++--------------+    +----------------+    +--------------+
+        
+                             |
+        +--------------------+--------------------+
+        |                    |                    |
+        v                    v                    v
++-------+------+    +--------+-------+    +------+-------+
+| SEGMENT TREE |    | DIJKSTRA'S     |    |     MST      |
+| (Inventory)  |    | (Delivery)     |    | (Bank Network)|
++--------------+    +----------------+    +--------------+
+
+================================================================================
+                            END OF CODE EXPLANATION
+================================================================================
+
+Document Created: December 7, 2025
+File Explained: cpp_Backend/prog1.cpp
+Total Lines Documented: ~2,200
+
+================================================================================

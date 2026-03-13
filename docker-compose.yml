@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # Web application service
+  web:
+    build: .
+    container_name: blood-bank-web
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=production
+      - FLASK_APP=app.py
+      - DATABASE_URL=sqlite:///blood_bank.db
+      - SECRET_KEY=${SECRET_KEY:-change-me-in-production}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      - db
+    networks:
+      - blood-bank-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: PostgreSQL database (for production)
+  # Uncomment to use PostgreSQL instead of SQLite
+  # db:
+  #   image: postgres:13
+  #   container_name: blood-bank-db
+  #   environment:
+  #     - POSTGRES_DB=blood_bank
+  #     - POSTGRES_USER=blood_user
+  #     - POSTGRES_PASSWORD=${DB_PASSWORD:-change-me}
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   networks:
+  #     - blood-bank-network
+  #   restart: unless-stopped
+
+  # Placeholder service for database (kept for compatibility)
+  db:
+    image: busybox
+    command: sleep infinity
+    networks:
+      - blood-bank-network
+
+  # Optional: Nginx reverse proxy
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: blood-bank-nginx
+  #   ports:
+  #     - "80:80"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #   depends_on:
+  #     - web
+  #   networks:
+  #     - blood-bank-network
+  #   restart: unless-stopped
+
+networks:
+  blood-bank-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+
+# To use this docker-compose file:
+# 1. docker-compose build
+# 2. docker-compose up -d
+# 3. docker-compose logs -f web
+# 4. docker-compose down (to stop)
