@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% block title %}Compatibility{% endblock %}
+
+{% block content %}
+{% set groups = ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'] %}
+{% set compat = {
+    'O-':  ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+'],
+    'O+':  ['O+', 'A+', 'B+', 'AB+'],
+    'A-':  ['A-', 'A+', 'AB-', 'AB+'],
+    'A+':  ['A+', 'AB+'],
+    'B-':  ['B-', 'B+', 'AB-', 'AB+'],
+    'B+':  ['B+', 'AB+'],
+    'AB-': ['AB-', 'AB+'],
+    'AB+': ['AB+']
+} %}
+
+<div class="page-head">
+    <div>
+        <p class="eyebrow">Reference</p>
+        <h1>Blood compatibility</h1>
+        <p class="lede">
+            Check a single pairing, find every donor who can help a patient, or read the full matrix.
+            Lookups are cached, so repeat checks are O(1).
+        </p>
+    </div>
+</div>
+
+<div class="grid grid-2" style="margin-bottom: var(--s5);">
+    <section class="card">
+        <div class="card-head"><h2>{{ icon.heart() }} Check a pairing</h2></div>
+        <div class="card-body">
+            <form id="compatibilityForm" action="{{ url_for('check_compatibility_route') }}" method="POST">
+                <div class="field-row">
+                    <div class="field">
+                        <label for="donor_blood">Donor blood</label>
+                        <select id="donor_blood" name="donor_blood" required>
+                            {% for bg in groups %}<option value="{{ bg }}">{{ bg }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="patient_blood">Patient blood</label>
+                        <select id="patient_blood" name="patient_blood" required>
+                            {% for bg in groups %}<option value="{{ bg }}">{{ bg }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">{{ icon.check() }} Check compatibility</button>
+                </div>
+            </form>
+            <div id="checkResult" hidden></div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>{{ icon.search() }} Find compatible donors</h2>
+            <span class="sub">{{ donors|length }} active donor{{ 's' if donors|length != 1 }}</span>
+        </div>
+        <div class="card-body">
+            <form id="findDonorsForm" action="{{ url_for('find_compatible_donors') }}" method="POST">
+                <div class="field-row">
+                    <div class="field">
+                        <label for="find_patient_blood">Patient needs</label>
+                        <select id="find_patient_blood" name="patient_blood" required>
+                            {% for bg in groups %}<option value="{{ bg }}">{{ bg }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">{{ icon.users() }} Search registry</button>
+                </div>
+            </form>
+            <div id="donorResult" hidden style="margin-top: var(--s4);"></div>
+        </div>
+    </section>
+</div>
+
+<section class="card">
+    <div class="card-head">
+        <h2>{{ icon.chart() }} Full compatibility matrix</h2>
+        <span class="sub">Rows donate &rarr; columns receive</span>
+    </div>
+    <div class="card-body">
+        <div class="matrix-wrap">
+            <table class="matrix">
+                <thead>
+                    <tr>
+                        <th class="corner">Donor&nbsp;&darr;<br>Recipient&nbsp;&rarr;</th>
+                        {% for recipient in groups %}<th scope="col">{{ recipient }}</th>{% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for donor_bg in groups %}
+                        <tr>
+                            <th class="rowhead" scope="row">{{ donor_bg }}</th>
+                            {% for recipient in groups %}
+                                {% set ok = recipient in compat[donor_bg] %}
+                                <td class="{{ 'yes' if ok else 'no' }}"
+                                    title="{{ donor_bg }} {{ 'can donate to' if ok else 'cannot donate to' }} {{ recipient }}">
+                                    {{ '✓' if ok else '·' }}
+                                </td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p style="color: var(--text-muted); font-size: .85rem; text-align: center; margin-top: var(--s3);">
+            <b>O&minus;</b> is the universal donor &middot; <b>AB+</b> is the universal recipient
+        </p>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        var SVG_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="m8.2 12.2 2.6 2.6 5-5.2"/></svg>';
+        var SVG_NO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="m14.8 9.2-5.6 5.6M9.2 9.2l5.6 5.6"/></svg>';
+
+        async function post(url, form) {
+            var response = await fetch(url, {
+                method: 'POST',
+                body: new FormData(form),
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            return { ok: response.ok, data: await response.json() };
+        }
+
+        document.getElementById('compatibilityForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            var box = document.getElementById('checkResult');
+            try {
+                var res = await post(this.action, this);
+                if (!res.ok) {
+                    window.LifeLink.toast(res.data.error || 'Check failed.', 'crit');
+                    return;
+                }
+                var d = res.data;
+                box.hidden = false;
+                box.className = 'result-banner ' + (d.compatible ? 'yes' : 'no');
+                box.innerHTML = (d.compatible ? SVG_OK : SVG_NO) +
+                    '<div><strong></strong><span></span></div>';
+                box.querySelector('strong').textContent =
+                    d.compatible ? 'Compatible' : 'Not compatible';
+                box.querySelector('span').textContent =
+                    d.donor_blood + ' donor ' + (d.compatible ? 'can' : 'cannot') +
+                    ' donate to a ' + d.patient_blood + ' patient.';
+            } catch (err) {
+                window.LifeLink.toast('Network error - could not reach the server.', 'crit');
+            }
+        });
+
+        document.getElementById('findDonorsForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+            var box = document.getElementById('donorResult');
+            try {
+                var res = await post(this.action, this);
+                if (!res.ok) {
+                    window.LifeLink.toast(res.data.error || 'Search failed.', 'crit');
+                    return;
+                }
+                var d = res.data;
+                box.hidden = false;
+
+                if (!d.count) {
+                    box.innerHTML = '<div class="alert alert-warn" style="margin:0">' +
+                        '<div>No registered donor is compatible with <b></b> right now.</div></div>';
+                    box.querySelector('b').textContent = d.patient_blood;
+                    return;
+                }
+
+                var head = document.createElement('div');
+                head.className = 'alert alert-ok';
+                head.style.margin = '0 0 12px';
+                head.innerHTML = '<div><b></b> compatible donor(s) found for <b></b>.</div>';
+                var bolds = head.querySelectorAll('b');
+                bolds[0].textContent = d.count;
+                bolds[1].textContent = d.patient_blood;
+
+                var wrap = document.createElement('div');
+                wrap.className = 'table-wrap';
+                var table = document.createElement('table');
+                table.className = 'data';
+                table.innerHTML = '<thead><tr><th>ID</th><th>Name</th><th>Blood</th>' +
+                    '<th class="num">Age</th><th>Phone</th><th>City</th></tr></thead><tbody></tbody>';
+                var tbody = table.querySelector('tbody');
+
+                d.donors.forEach(function (donor) {
+                    var tr = document.createElement('tr');
+                    [
+                        ['cell-mono', donor.donor_id],
+                        ['cell-strong', donor.name],
+                        ['pill', donor.blood_group],
+                        ['num', donor.age],
+                        ['cell-muted', donor.phone],
+                        ['cell-muted', donor.city || '—']
+                    ].forEach(function (pair) {
+                        var td = document.createElement('td');
+                        if (pair[0] === 'pill') {
+                            var pill = document.createElement('span');
+                            pill.className = 'bg-pill';
+                            pill.textContent = pair[1];
+                            td.appendChild(pill);
+                        } else {
+                            td.className = pair[0];
+                            td.textContent = pair[1];
+                        }
+                        tr.appendChild(td);
+                    });
+                    tbody.appendChild(tr);
+                });
+
+                wrap.appendChild(table);
+                box.replaceChildren(head, wrap);
+            } catch (err) {
+                window.LifeLink.toast('Network error - could not reach the server.', 'crit');
+            }
+        });
+    })();
+</script>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% block title %}Sign in{% endblock %}
+
+{# The auth screens replace the whole chrome with a split-panel layout. #}
+{% block chrome %}
+<div class="auth">
+    <aside class="auth-brand">
+        <span class="mark">{{ icon.dropFill() }}</span>
+        <h1>LifeLink</h1>
+        <p class="tag">
+            Blood bank management for donors, inventory and the patients who are
+            waiting — with the most critical case always next in line.
+        </p>
+        <ul class="auth-points">
+            <li>{{ icon.users() }} Donor registry with instant search</li>
+            <li>{{ icon.boxes() }} Live inventory and low-stock alerts</li>
+            <li>{{ icon.patient() }} Priority queue ordered by urgency and deadline</li>
+            <li>{{ icon.shield() }} Audit trail for every action</li>
+        </ul>
+    </aside>
+
+    <section class="auth-panel">
+        <div class="theme-slot">
+            <button class="icon-btn" type="button" data-theme-toggle aria-label="Switch theme">
+                <span class="theme-icon-light">{{ icon.moon() }}</span>
+                <span class="theme-icon-dark">{{ icon.sun() }}</span>
+            </button>
+        </div>
+
+        <div class="auth-form">
+            <h2>Welcome back</h2>
+            <p class="sub">Sign in to continue to the dashboard.</p>
+
+            <form method="POST" action="{{ url_for('login') }}" data-ajax
+                  data-reset="false" data-reload="false" data-busy-label="Signing in…">
+                <div class="field">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required
+                           autocomplete="username" autofocus placeholder="admin">
+                    <span class="field-error">{{ icon.warning() }}<span></span></span>
+                </div>
+                <div class="field">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required
+                           autocomplete="current-password" placeholder="••••••••">
+                    <span class="field-error">{{ icon.warning() }}<span></span></span>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">{{ icon.lock() }} Sign in</button>
+            </form>
+
+            <p class="auth-alt">
+                No account yet? <a href="{{ url_for('register') }}">Create one</a>
+            </p>
+
+            <div class="cred-note">
+                {{ icon.info() }}
+                First run? The seeded administrator is <code>admin</code> / <code>Admin@123</code>
+                — change that password before deploying anywhere real.
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}

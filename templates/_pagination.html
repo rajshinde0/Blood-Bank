@@ -1,0 +1,54 @@
+{#
+  Shared pagination strip.
+
+  The listing routes have always passed page / pages / total; nothing rendered
+  them, so only the first 20 rows were ever reachable. `args` carries the
+  current filters (search term, urgency, …) through to the page links.
+#}
+{% macro pager(page, pages, total, endpoint, label='items', args={}) %}
+    {% if total %}
+        <div class="pagination">
+            <span>
+                Showing page <b>{{ page }}</b> of <b>{{ pages or 1 }}</b>
+                &middot; {{ total }} {{ label }}
+            </span>
+            {% if (pages or 1) > 1 %}
+                <nav class="pages" aria-label="Pagination">
+                    {% if page > 1 %}
+                        <a href="{{ url_for(endpoint, page=page - 1, **args) }}" rel="prev" aria-label="Previous page">&lsaquo;</a>
+                    {% else %}
+                        <span class="is-disabled" aria-hidden="true">&lsaquo;</span>
+                    {% endif %}
+
+                    {% set window_start = [1, page - 2]|max %}
+                    {% set window_end = [pages, window_start + 4]|min %}
+                    {% set window_start = [1, window_end - 4]|max %}
+
+                    {% if window_start > 1 %}
+                        <a href="{{ url_for(endpoint, page=1, **args) }}">1</a>
+                        {% if window_start > 2 %}<span class="is-disabled">…</span>{% endif %}
+                    {% endif %}
+
+                    {% for p in range(window_start, window_end + 1) %}
+                        {% if p == page %}
+                            <span class="is-current" aria-current="page">{{ p }}</span>
+                        {% else %}
+                            <a href="{{ url_for(endpoint, page=p, **args) }}">{{ p }}</a>
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if window_end < pages %}
+                        {% if window_end < pages - 1 %}<span class="is-disabled">…</span>{% endif %}
+                        <a href="{{ url_for(endpoint, page=pages, **args) }}">{{ pages }}</a>
+                    {% endif %}
+
+                    {% if page < pages %}
+                        <a href="{{ url_for(endpoint, page=page + 1, **args) }}" rel="next" aria-label="Next page">&rsaquo;</a>
+                    {% else %}
+                        <span class="is-disabled" aria-hidden="true">&rsaquo;</span>
+                    {% endif %}
+                </nav>
+            {% endif %}
+        </div>
+    {% endif %}
+{% endmacro %}

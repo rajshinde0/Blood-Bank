@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% import "_pagination.html" as pg %}
+{% block title %}Transactions{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <p class="eyebrow">Ledger</p>
+        <h1>Transactions</h1>
+        <p class="lede">Record donations into stock and issues out to patients. Inventory updates immediately.</p>
+    </div>
+    <div class="page-head-actions">
+        <a class="btn btn-secondary" href="{{ url_for('report_transactions') }}">{{ icon.chart() }} JSON report</a>
+    </div>
+</div>
+
+<div class="stack">
+    <section class="card form-card">
+        <div class="card-head">
+            <h2>{{ icon.exchange() }} Record a transaction</h2>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('add_transaction') }}" method="POST" data-ajax
+                  data-busy-label="Recording…" id="txForm">
+                <div class="field-row">
+                    <div class="field">
+                        <label for="action">Type <span class="req">*</span></label>
+                        <select id="action" name="action" required>
+                            <option value="">Select…</option>
+                            <option value="donation">Donation — blood in</option>
+                            <option value="issue">Issue — blood out</option>
+                        </select>
+                    </div>
+
+                    {# Two separate selects: the route reads donor_id for a donation
+                       and patient_id for an issue. The inactive one is disabled so
+                       the browser leaves it out of the submission entirely. #}
+                    <div class="field" id="donorField" hidden>
+                        <label for="donor_id">Donor <span class="req">*</span></label>
+                        <select id="donor_id" name="donor_id" disabled>
+                            <option value="">Select a donor…</option>
+                            {% for donor in donors %}
+                                <option value="{{ donor.donor_id }}">
+                                    {{ donor.donor_id }} — {{ donor.name }} ({{ donor.blood_group.value }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                        {% if not donors %}<span class="hint">No active donors registered yet.</span>{% endif %}
+                    </div>
+
+                    <div class="field" id="patientField" hidden>
+                        <label for="patient_id">Patient <span class="req">*</span></label>
+                        <select id="patient_id" name="patient_id" disabled>
+                            <option value="">Select a patient…</option>
+                            {% for patient in patients %}
+                                <option value="{{ patient.patient_id }}">
+                                    {{ patient.patient_id }} — {{ patient.name }} ({{ patient.blood_group.value }})
+                                </option>
+                            {% endfor %}
+                        </select>
+                        {% if not patients %}<span class="hint">No patients are waiting in the queue.</span>{% endif %}
+                    </div>
+
+                    <div class="field">
+                        <label for="blood_group">Blood group <span class="req">*</span></label>
+                        <select id="blood_group" name="blood_group" required>
+                            <option value="">Select…</option>
+                            {% for bg in ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'] %}
+                                <option value="{{ bg }}">{{ bg }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    </div>
+
+                    <div class="field">
+                        <label for="quantity">Quantity <span class="req">*</span></label>
+                        <input type="number" id="quantity" name="quantity" required min="1" max="5000" placeholder="2">
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                        <span class="hint">Units</span>
+                    </div>
+                </div>
+
+                <div class="field-row">
+                    <div class="field" style="grid-column: 1 / -1;">
+                        <label for="notes">Notes</label>
+                        <input type="text" id="notes" name="notes" placeholder="Optional context for this record">
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">{{ icon.check() }} Record transaction</button>
+                    <button type="reset" class="btn btn-ghost">Clear</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>{{ icon.clock() }} History <span class="sub">{{ total }} record{{ 's' if total != 1 }}</span></h2>
+            <nav class="segmented" aria-label="Filter transactions">
+                {% for value, label in [('all', 'All'), ('donation', 'Donations'), ('issue', 'Issues')] %}
+                    <a href="{{ url_for('transactions', filter=value) }}"
+                       class="{{ 'is-active' if filter_type == value }}">{{ label }}</a>
+                {% endfor %}
+            </nav>
+        </div>
+
+        <div class="card-body flush">
+            {% if transactions %}
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead>
+                            <tr>
+                                <th>Transaction</th>
+                                <th>Type</th>
+                                <th>Counterparty</th>
+                                <th>Blood</th>
+                                <th class="num">Units</th>
+                                <th>Status</th>
+                                <th>Recorded</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in transactions %}
+                                {% set is_in = t.action == 'donation' %}
+                                <tr>
+                                    <td class="cell-mono">{{ t.transaction_id }}</td>
+                                    <td>
+                                        <span class="chip {{ 'chip-ok' if is_in else 'chip-crit' }}">
+                                            {{ icon.arrowDown() if is_in else icon.arrowUp() }}
+                                            {{ 'Donation' if is_in else 'Issue' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if is_in and t.donor %}
+                                            <span class="cell-strong">{{ t.donor.name }}</span>
+                                            <span class="cell-muted">({{ t.donor.donor_id }})</span>
+                                        {% elif not is_in and t.patient %}
+                                            <span class="cell-strong">{{ t.patient.name }}</span>
+                                            <span class="cell-muted">({{ t.patient.patient_id }})</span>
+                                        {% else %}
+                                            <span class="cell-muted">—</span>
+                                        {% endif %}
+                                    </td>
+                                    <td><span class="bg-pill">{{ t.blood_group.value }}</span></td>
+                                    <td class="num">{{ t.quantity }}</td>
+                                    <td>
+                                        <span class="chip {{ 'chip-ok' if t.status == 'completed' else 'chip-muted' }}">
+                                            {{ t.status|capitalize }}
+                                        </span>
+                                    </td>
+                                    <td class="cell-muted">{{ t.created_at.strftime('%d %b %Y, %H:%M') }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {{ pg.pager(page, pages, total, 'transactions', 'records', {'filter': filter_type}) }}
+            {% else %}
+                <div class="empty">
+                    {{ icon.inbox() }}
+                    <p class="empty-title">No transactions recorded</p>
+                    <p>Donations and issues you record above will be listed here.</p>
+                </div>
+            {% endif %}
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    (function () {
+        var action = document.getElementById('action');
+        var donorField = document.getElementById('donorField');
+        var patientField = document.getElementById('patientField');
+        var donorSelect = document.getElementById('donor_id');
+        var patientSelect = document.getElementById('patient_id');
+
+        function sync() {
+            var isDonation = action.value === 'donation';
+            var isIssue = action.value === 'issue';
+
+            donorField.hidden = !isDonation;
+            donorSelect.disabled = !isDonation;
+            donorSelect.required = isDonation;
+
+            patientField.hidden = !isIssue;
+            patientSelect.disabled = !isIssue;
+            patientSelect.required = isIssue;
+        }
+
+        action.addEventListener('change', sync);
+        document.getElementById('txForm').addEventListener('reset', function () {
+            setTimeout(sync, 0);
+        });
+        sync();
+    })();
+</script>
+{% endblock %}

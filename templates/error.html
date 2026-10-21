@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% block title %}{{ code|default('Error') }}{% endblock %}
+
+{% block content %}
+<div class="error-state">
+    <p class="error-code">{{ code|default('!') }}</p>
+    <h1>
+        {% if code == 404 %}Page not found
+        {% elif code == 403 %}Access denied
+        {% elif code == 500 %}Something went wrong
+        {% else %}Unexpected error{% endif %}
+    </h1>
+    <p>{{ error|default('An unexpected error occurred.') }}</p>
+    <a class="btn btn-primary" href="{{ url_for('index') }}">{{ icon.dashboard() }} Back to dashboard</a>
+</div>
+{% endblock %}

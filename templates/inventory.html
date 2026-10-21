@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% block title %}Inventory{% endblock %}
+
+{% block content %}
+{% set total_units = inventory | sum(attribute='quantity') %}
+{% set low = inventory | selectattr('is_low_stock') | list %}
+
+<div class="page-head">
+    <div>
+        <p class="eyebrow">Stock</p>
+        <h1>Blood inventory</h1>
+        <p class="lede">Current levels for all eight blood types, measured against each type's safe threshold.</p>
+    </div>
+    <div class="page-head-actions">
+        <a class="btn btn-secondary" href="{{ url_for('report_inventory') }}">{{ icon.chart() }} JSON report</a>
+        <a class="btn btn-primary" href="{{ url_for('transactions') }}">{{ icon.plus() }} Record transaction</a>
+    </div>
+</div>
+
+{% if low %}
+    <div class="alert alert-crit" role="alert">
+        {{ icon.warning() }}
+        <div>
+            <b>{{ low|length }} type{{ 's' if low|length != 1 }} below the safe threshold.</b>
+            Urgent donation drive recommended for
+            {% for inv in low %}{{ inv.blood_group.value }}{{ ', ' if not loop.last }}{% endfor %}.
+        </div>
+    </div>
+{% else %}
+    <div class="alert alert-ok" role="status">
+        {{ icon.checkCircle() }}
+        <div><b>All blood types are above their safe threshold.</b> {{ total_units }} units in stock.</div>
+    </div>
+{% endif %}
+
+<div class="grid grid-cards" style="margin-bottom: var(--s5);">
+    {% for inv in inventory %}
+        {% set capacity = inv.max_capacity if inv.max_capacity else 1 %}
+        {% set pct = ((inv.quantity / capacity) * 100)|round(0, 'floor')|int %}
+        {% set state = 'is-crit' if inv.is_low_stock else ('is-warn' if inv.quantity < inv.min_threshold * 2 else 'is-ok') %}
+        <article class="stat {{ state }}">
+            <p class="stat-label">{{ icon.drop() }} {{ inv.blood_group.value }}</p>
+            <p class="stat-value">{{ inv.quantity }}</p>
+            <p class="stat-meta">{{ inv.unit }} &middot; {{ [pct, 100]|min }}% of capacity</p>
+            <div class="meter-track" style="margin-top: var(--s3);">
+                <div class="meter-fill {{ 'is-crit' if inv.is_low_stock else ('is-warn' if inv.quantity < inv.min_threshold * 2) }}"
+                     style="width: {{ [pct, 100]|min }}%"
+                     role="progressbar" aria-valuenow="{{ inv.quantity }}"
+                     aria-valuemin="0" aria-valuemax="{{ inv.max_capacity }}"
+                     aria-label="{{ inv.blood_group.value }} stock level"></div>
+            </div>
+        </article>
+    {% endfor %}
+</div>
+
+<section class="card">
+    <div class="card-head">
+        <h2>{{ icon.chart() }} Detailed status</h2>
+        <span class="sub">{{ total_units }} units across {{ inventory|length }} types</span>
+    </div>
+    <div class="card-body flush">
+        <div class="table-wrap">
+            <table class="data">
+                <thead>
+                    <tr>
+                        <th>Blood group</th>
+                        <th class="num">Available</th>
+                        <th class="num">Threshold</th>
+                        <th class="num">Capacity</th>
+                        <th>Status</th>
+                        <th>Recommendation</th>
+                        <th>Last updated</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for inv in inventory %}
+                        <tr>
+                            <td><span class="bg-pill">{{ inv.blood_group.value }}</span></td>
+                            <td class="num">{{ inv.quantity }}</td>
+                            <td class="num cell-muted">{{ inv.min_threshold }}</td>
+                            <td class="num cell-muted">{{ inv.max_capacity }}</td>
+                            <td>
+                                {% if inv.is_low_stock %}
+                                    <span class="chip chip-crit">{{ icon.xCircle() }} Critical</span>
+                                {% elif inv.quantity < inv.min_threshold * 2 %}
+                                    <span class="chip chip-warn">{{ icon.warning() }} Low</span>
+                                {% else %}
+                                    <span class="chip chip-ok">{{ icon.check() }} Sufficient</span>
+                                {% endif %}
+                            </td>
+                            <td class="cell-muted">
+                                {% if inv.is_low_stock %}
+                                    Urgent donation drive — {{ inv.min_threshold - inv.quantity }} units short
+                                {% elif inv.quantity < inv.min_threshold * 2 %}
+                                    Schedule a donation drive soon
+                                {% else %}
+                                    Stock is healthy
+                                {% endif %}
+                            </td>
+                            <td class="cell-muted">
+                                {% if inv.last_updated %}{{ inv.last_updated.strftime('%d %b, %H:%M') }}{% else %}—{% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endblock %}

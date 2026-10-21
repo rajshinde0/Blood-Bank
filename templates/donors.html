@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% import "_pagination.html" as pg %}
+{% block title %}Donors{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <p class="eyebrow">Registry</p>
+        <h1>Donor management</h1>
+        <p class="lede">Register donors, search the registry, and keep contact details current.</p>
+    </div>
+    <div class="page-head-actions">
+        <a class="btn btn-secondary" href="{{ url_for('compatibility') }}">{{ icon.heart() }} Find a match</a>
+    </div>
+</div>
+
+<div class="stack">
+    <section class="card form-card">
+        <div class="card-head">
+            <h2>{{ icon.plus() }} Register a donor</h2>
+            <span class="sub">Donors must be between 18 and 65</span>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('add_donor') }}" method="POST" data-ajax data-busy-label="Saving…">
+                <div class="field-row">
+                    <div class="field">
+                        <label for="id">Donor ID <span class="req">*</span></label>
+                        <input type="text" id="id" name="id" required placeholder="D001" maxlength="20">
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                        <span class="hint">Letters, digits, hyphens and underscores</span>
+                    </div>
+                    <div class="field">
+                        <label for="name">Full name <span class="req">*</span></label>
+                        <input type="text" id="name" name="name" required placeholder="Jane Doe">
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    </div>
+                    <div class="field">
+                        <label for="blood_group">Blood group <span class="req">*</span></label>
+                        <select id="blood_group" name="blood_group" required>
+                            <option value="">Select…</option>
+                            {% for bg in ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'] %}
+                                <option value="{{ bg }}">{{ bg }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    </div>
+                </div>
+
+                <div class="field-row">
+                    <div class="field">
+                        <label for="age">Age <span class="req">*</span></label>
+                        <input type="number" id="age" name="age" required min="18" max="65" placeholder="25">
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    </div>
+                    <div class="field">
+                        <label for="phone">Phone <span class="req">*</span></label>
+                        <input type="tel" id="phone" name="phone" required placeholder="9876543210">
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    </div>
+                    <div class="field">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" placeholder="jane@example.com">
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    </div>
+                    <div class="field">
+                        <label for="city">City</label>
+                        <input type="text" id="city" name="city" placeholder="Pune">
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">{{ icon.plus() }} Add donor</button>
+                    <button type="reset" class="btn btn-ghost">Clear</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>{{ icon.users() }} Registered donors <span class="sub">{{ total }} total</span></h2>
+            <form class="searchbar" action="{{ url_for('donors') }}" method="GET" role="search">
+                <select name="search_type" aria-label="Search field">
+                    {% for value, label in [('all', 'All fields'), ('id', 'Donor ID'), ('name', 'Name'), ('blood', 'Blood group')] %}
+                        <option value="{{ value }}" {{ 'selected' if search_type == value }}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <div class="search-input">
+                    {{ icon.search() }}
+                    <input type="search" name="search" value="{{ search_query }}"
+                           placeholder="Search donors…" aria-label="Search donors">
+                </div>
+                <button type="submit" class="btn btn-secondary">Search</button>
+                {% if search_query %}
+                    <a class="btn btn-ghost" href="{{ url_for('donors') }}">{{ icon.close() }} Clear</a>
+                {% endif %}
+            </form>
+        </div>
+
+        <div class="card-body flush">
+            {% if donors %}
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead>
+                            <tr>
+                                <th>Donor ID</th>
+                                <th>Name</th>
+                                <th>Blood</th>
+                                <th class="num">Age</th>
+                                <th>Phone</th>
+                                <th>City</th>
+                                <th class="num">Donations</th>
+                                <th><span class="visually-hidden">Actions</span></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for donor in donors %}
+                                <tr>
+                                    <td class="cell-mono">{{ donor.donor_id }}</td>
+                                    <td class="cell-strong">{{ donor.name }}</td>
+                                    <td><span class="bg-pill">{{ donor.blood_group.value }}</span></td>
+                                    <td class="num">{{ donor.age }}</td>
+                                    <td class="cell-muted">{{ donor.phone }}</td>
+                                    <td class="cell-muted">{{ donor.city or '—' }}</td>
+                                    <td class="num">{{ donor.donation_count }}</td>
+                                    <td class="cell-actions">
+                                        <form action="{{ url_for('delete_donor', donor_id=donor.donor_id) }}"
+                                              method="POST" data-ajax data-reset="false"
+                                              data-confirm="Remove donor {{ donor.name }} from the registry?"
+                                              style="display:inline">
+                                            <button type="submit" class="btn btn-danger btn-sm">
+                                                {{ icon.trash() }} Remove
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {{ pg.pager(page, pages, total, 'donors', 'donors',
+                            {'search': search_query, 'search_type': search_type}) }}
+            {% else %}
+                <div class="empty">
+                    {{ icon.users() }}
+                    <p class="empty-title">{{ 'No donors match that search' if search_query else 'No donors registered yet' }}</p>
+                    <p>{{ 'Try a different term, or clear the search.' if search_query else 'Add your first donor using the form above.' }}</p>
+                </div>
+            {% endif %}
+        </div>
+    </section>
+</div>
+{% endblock %}

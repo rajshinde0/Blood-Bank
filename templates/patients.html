@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% import "_pagination.html" as pg %}
+{% block title %}Patients{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <p class="eyebrow">Priority queue</p>
+        <h1>Patient scheduling</h1>
+        <p class="lede">
+            A min-heap orders patients by urgency first, then by earliest deadline —
+            so the most critical case is always next.
+        </p>
+    </div>
+    <div class="page-head-actions">
+        <button class="btn btn-secondary" type="button"
+                data-post="{{ url_for('serve_patient') }}" data-post-label="serve"
+                data-confirm="Serve the highest-priority patient now?">
+            {{ icon.userCheck() }} Serve next patient
+        </button>
+    </div>
+</div>
+
+<div class="stack">
+    <section class="card form-card">
+        <div class="card-head">
+            <h2>{{ icon.plus() }} Add patient to the queue</h2>
+        </div>
+        <div class="card-body">
+            <form action="{{ url_for('add_patient') }}" method="POST" data-ajax data-busy-label="Queuing…">
+                <div class="field-row">
+                    <div class="field">
+                        <label for="id">Patient ID <span class="req">*</span></label>
+                        <input type="text" id="id" name="id" required placeholder="P001" maxlength="20">
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    </div>
+                    <div class="field">
+                        <label for="name">Full name <span class="req">*</span></label>
+                        <input type="text" id="name" name="name" required placeholder="John Patient">
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    </div>
+                    <div class="field">
+                        <label for="age">Age <span class="req">*</span></label>
+                        <input type="number" id="age" name="age" required min="0" max="120" placeholder="35">
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    </div>
+                </div>
+
+                <div class="field-row">
+                    <div class="field">
+                        <label for="phone">Phone <span class="req">*</span></label>
+                        <input type="tel" id="phone" name="phone" required placeholder="9876543210">
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    </div>
+                    <div class="field">
+                        <label for="blood_group">Blood group needed <span class="req">*</span></label>
+                        <select id="blood_group" name="blood_group" required>
+                            <option value="">Select…</option>
+                            {% for bg in ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'] %}
+                                <option value="{{ bg }}">{{ bg }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    </div>
+                    <div class="field">
+                        <label for="urgency">Urgency <span class="req">*</span></label>
+                        <select id="urgency" name="urgency" required>
+                            <option value="">Select…</option>
+                            <option value="1">1 — Critical (immediate)</option>
+                            <option value="2">2 — Urgent (soon)</option>
+                            <option value="3">3 — Normal (routine)</option>
+                        </select>
+                        <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    </div>
+                    <div class="field">
+                        <label for="deadline_hours">Deadline</label>
+                        <input type="number" id="deadline_hours" name="deadline_hours" min="1" placeholder="24">
+                        <span class="hint">Hours from now. Within one urgency level, earlier deadlines are served first.</span>
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">{{ icon.plus() }} Add to queue</button>
+                    <button type="reset" class="btn btn-ghost">Clear</button>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>{{ icon.patient() }} Waiting queue <span class="sub">{{ total }} patient{{ 's' if total != 1 }}</span></h2>
+            <nav class="segmented" aria-label="Filter by urgency">
+                {% for value, label in [('all', 'All'), ('critical', 'Critical'), ('urgent', 'Urgent'), ('normal', 'Normal')] %}
+                    <a href="{{ url_for('patients', urgency=value) }}"
+                       class="{{ 'is-active' if filter_urgency == value }}">{{ label }}</a>
+                {% endfor %}
+            </nav>
+        </div>
+
+        <div class="card-body {{ 'flush' if not patients }}">
+            {% if patients %}
+                <div class="stack" style="gap: var(--s3);">
+                    {% for patient in patients %}
+                        {% set level = patient.urgency.name|lower %}
+                        <article class="patient-card u-{{ level }}">
+                            <div class="patient-main">
+                                <div class="patient-name">
+                                    <h3>{{ patient.name }}</h3>
+                                    <span class="bg-pill">{{ patient.blood_group.value }}</span>
+                                </div>
+                                <div class="patient-facts">
+                                    <span><b>ID:</b> {{ patient.patient_id }}</span>
+                                    <span><b>Age:</b> {{ patient.age }}</span>
+                                    <span><b>Phone:</b> {{ patient.phone }}</span>
+                                    {% if patient.city %}<span><b>City:</b> {{ patient.city }}</span>{% endif %}
+                                    <span><b>Arrived:</b> {{ patient.arrival_time.strftime('%d %b, %H:%M') }}</span>
+                                </div>
+                            </div>
+                            <div class="patient-side">
+                                {% if patient.urgency.value == 1 %}
+                                    <span class="chip chip-crit">{{ icon.warning() }} {{ patient.urgency_label }}</span>
+                                {% elif patient.urgency.value == 2 %}
+                                    <span class="chip chip-warn">{{ icon.warning() }} {{ patient.urgency_label }}</span>
+                                {% else %}
+                                    <span class="chip chip-ok">{{ icon.info() }} {{ patient.urgency_label }}</span>
+                                {% endif %}
+
+                                {% if patient.deadline %}
+                                    {% set expired = patient.time_remaining == 'EXPIRED' %}
+                                    <span class="chip {{ 'chip-crit' if expired else 'chip-info' }}">
+                                        {{ icon.clock() }}
+                                        {{ 'Deadline passed' if expired else patient.time_remaining + ' left' }}
+                                    </span>
+                                {% endif %}
+
+                                <span class="wait">Waiting {{ patient.wait_minutes }} min</span>
+                            </div>
+                        </article>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty">
+                    {{ icon.inbox() }}
+                    <p class="empty-title">
+                        {{ 'No ' + filter_urgency + ' patients waiting' if filter_urgency != 'all' else 'The queue is empty' }}
+                    </p>
+                    <p>Patients added above are ordered automatically by urgency and deadline.</p>
+                </div>
+            {% endif %}
+        </div>
+
+        {{ pg.pager(page, pages, total, 'patients', 'patients', {'urgency': filter_urgency}) }}
+    </section>
+</div>
+{% endblock %}

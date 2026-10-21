@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <p class="eyebrow">Overview</p>
+        <h1>Blood bank at a glance</h1>
+        <p class="lede">Live stock levels, the waiting queue, and the latest movements.</p>
+    </div>
+    <div class="page-head-actions">
+        <a class="btn btn-secondary" href="{{ url_for('patients') }}">{{ icon.patient() }} Patient queue</a>
+        <a class="btn btn-primary" href="{{ url_for('transactions') }}">{{ icon.plus() }} Record transaction</a>
+    </div>
+</div>
+
+{% if low_stock %}
+    <div class="alert alert-warn" role="alert">
+        {{ icon.warning() }}
+        <div>
+            <b>{{ low_stock_count }} blood type{{ 's' if low_stock_count != 1 }} below the safe threshold.</b>
+            {% for inv in low_stock %}{{ inv.blood_group.value }}{{ ' · ' if not loop.last }}{% endfor %}
+            — consider scheduling a donation drive.
+        </div>
+    </div>
+{% endif %}
+
+<div class="grid grid-stats" style="margin-bottom: var(--s5);">
+    <article class="stat">
+        <p class="stat-label">{{ icon.users() }} Registered donors</p>
+        <p class="stat-value">{{ total_donors }}</p>
+        <p class="stat-meta">{{ total_transactions }} transactions logged</p>
+    </article>
+
+    <article class="stat {{ 'is-warn' if low_stock_count else 'is-ok' }}">
+        <p class="stat-label">{{ icon.drop() }} Units in stock</p>
+        <p class="stat-value">{{ total_units }}</p>
+        <p class="stat-meta">
+            {% if low_stock_count %}
+                <span class="down">{{ low_stock_count }} low</span> of {{ inventory|length }} types
+            {% else %}
+                <span class="up">All {{ inventory|length }} types healthy</span>
+            {% endif %}
+        </p>
+    </article>
+
+    <article class="stat {{ 'is-crit' if critical_count else ('is-warn' if queue_size else 'is-ok') }}">
+        <p class="stat-label">{{ icon.patient() }} Waiting patients</p>
+        <p class="stat-value">{{ queue_size }}</p>
+        <p class="stat-meta">
+            {% if critical_count %}<span class="down">{{ critical_count }} critical</span>{% endif %}
+            {% if critical_count and urgent_count %}·{% endif %}
+            {% if urgent_count %}{{ urgent_count }} urgent{% endif %}
+            {% if not critical_count and not urgent_count %}No high-priority cases{% endif %}
+        </p>
+    </article>
+
+    <article class="stat">
+        <p class="stat-label">{{ icon.pulse() }} Patients on record</p>
+        <p class="stat-value">{{ total_patients }}</p>
+        <p class="stat-meta">{{ total_patients - queue_size }} already served</p>
+    </article>
+</div>
+
+<div class="grid grid-2">
+    <section class="card">
+        <div class="card-head">
+            <h2>{{ icon.boxes() }} Blood inventory</h2>
+            <a class="btn btn-ghost btn-sm" href="{{ url_for('inventory') }}">Manage</a>
+        </div>
+        <div class="card-body">
+            {% for inv in inventory %}
+                {% set capacity = inv.max_capacity if inv.max_capacity else 1 %}
+                {% set pct = ((inv.quantity / capacity) * 100)|round(0, 'floor')|int %}
+                <div class="meter-row">
+                    <span class="bg-pill">{{ inv.blood_group.value }}</span>
+                    <div class="meter-track">
+                        <div class="meter-fill {% if inv.is_low_stock %}is-crit{% elif inv.quantity < inv.min_threshold * 2 %}is-warn{% endif %}"
+                             style="width: {{ [pct, 100]|min }}%"
+                             role="progressbar" aria-valuenow="{{ inv.quantity }}"
+                             aria-valuemin="0" aria-valuemax="{{ inv.max_capacity }}"
+                             aria-label="{{ inv.blood_group.value }} stock level"></div>
+                    </div>
+                    <span class="meter-value">{{ inv.quantity }} <small>/ {{ inv.max_capacity }}</small></span>
+                </div>
+            {% else %}
+                <div class="empty">
+                    {{ icon.inbox() }}
+                    <p class="empty-title">No inventory yet</p>
+                    <p>Blood types are seeded automatically on first run.</p>
+                </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-head">
+            <h2>{{ icon.clock() }} Recent activity</h2>
+            <a class="btn btn-ghost btn-sm" href="{{ url_for('transactions') }}">View all</a>
+        </div>
+        <div class="card-body flush">
+            {% if recent_transactions %}
+                <div class="feed">
+                    {% for t in recent_transactions %}
+                        {% set is_in = t.action == 'donation' %}
+                        <div class="feed-item">
+                            <span class="feed-icon {{ 'in' if is_in else 'out' }}">
+                                {{ icon.arrowDown() if is_in else icon.arrowUp() }}
+                            </span>
+                            <div class="feed-body">
+                                <div>
+                                    <b>{{ 'Donation received' if is_in else 'Blood issued' }}</b>
+                                    — {{ t.quantity }} units of
+                                    <span class="bg-pill">{{ t.blood_group.value }}</span>
+                                </div>
+                                <div class="t" data-since="{{ t.created_at.isoformat() }}Z">
+                                    {{ t.created_at.strftime('%d %b %Y, %H:%M') }}
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty">
+                    {{ icon.inbox() }}
+                    <p class="empty-title">No transactions yet</p>
+                    <p>Donations and issues will appear here as they happen.</p>
+                </div>
+            {% endif %}
+        </div>
+    </section>
+</div>
+{% endblock %}

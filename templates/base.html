@@ -1,0 +1,112 @@
+{% import "_icons.html" as icon %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="LifeLink - blood bank management: donors, inventory, priority patient queue and compatibility checks.">
+    <title>{% block title %}LifeLink{% endblock %} · LifeLink Blood Bank</title>
+
+    {# Apply the stored theme before first paint so dark users never see a white flash. #}
+    <script>
+        (function () {
+            try {
+                var t = localStorage.getItem('lifelink-theme');
+                if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t);
+            } catch (e) { /* storage blocked - fall back to the system preference */ }
+        })();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23d7263d' d='M12 2.7s6.5 6.9 6.5 11.3a6.5 6.5 0 0 1-13 0C5.5 9.6 12 2.7 12 2.7z'/%3E%3C/svg%3E">
+    {% block head %}{% endblock %}
+</head>
+<body>
+
+{% block chrome %}
+<header class="nav">
+    <div class="nav-inner">
+        <a class="brand" href="{{ url_for('index') }}">
+            <span class="brand-mark">{{ icon.dropFill() }}</span>
+            <span>Life<b>Link</b></span>
+        </a>
+
+        {% if current_user.is_authenticated %}
+            <input type="checkbox" id="nav-toggle" class="nav-toggle" aria-hidden="true" tabindex="-1">
+
+            {% set nav_items = [
+                ('index',         'Dashboard',     icon.dashboard()),
+                ('donors',        'Donors',        icon.users()),
+                ('inventory',     'Inventory',     icon.boxes()),
+                ('patients',      'Patients',      icon.patient()),
+                ('transactions',  'Transactions',  icon.exchange()),
+                ('compatibility', 'Compatibility', icon.heart())
+            ] %}
+            <nav class="nav-links" aria-label="Primary">
+                {% for endpoint, label, glyph in nav_items %}
+                    <a class="nav-link {{ 'is-active' if request.endpoint == endpoint }}"
+                       href="{{ url_for(endpoint) }}"
+                       {% if request.endpoint == endpoint %}aria-current="page"{% endif %}>
+                        {{ glyph }}{{ label }}
+                    </a>
+                {% endfor %}
+            </nav>
+
+            <div class="nav-tail">
+                <button class="icon-btn" type="button" data-theme-toggle
+                        aria-label="Switch between light and dark theme" title="Switch theme">
+                    <span class="theme-icon-light">{{ icon.moon() }}</span>
+                    <span class="theme-icon-dark">{{ icon.sun() }}</span>
+                </button>
+
+                <a class="user-chip" href="{{ url_for('logout') }}" title="Sign out">
+                    <span class="avatar">{{ current_user.full_name[:1]|upper }}</span>
+                    <span class="uname">{{ current_user.username }}</span>
+                    <span class="role">{{ current_user.role.value }}</span>
+                    {{ icon.logout() }}
+                </a>
+
+                <label class="nav-burger" for="nav-toggle" aria-label="Toggle navigation">{{ icon.menu() }}</label>
+            </div>
+        {% else %}
+            <div class="nav-tail">
+                <button class="icon-btn" type="button" data-theme-toggle aria-label="Switch theme">
+                    <span class="theme-icon-light">{{ icon.moon() }}</span>
+                    <span class="theme-icon-dark">{{ icon.sun() }}</span>
+                </button>
+                <a class="btn btn-primary btn-sm" href="{{ url_for('login') }}">Sign in</a>
+            </div>
+        {% endif %}
+    </div>
+</header>
+
+<main class="shell">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ {'error': 'crit', 'danger': 'crit', 'success': 'ok', 'warning': 'warn'}.get(category, 'info') }}" role="alert">
+                {{ icon.info() }}<div>{{ message }}</div>
+            </div>
+        {% endfor %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+    <p>LifeLink Blood Bank Management System &middot; VIT DSA Project &middot;
+       <a href="https://github.com/rajshinde0/Blood-Bank">Source on GitHub</a></p>
+</footer>
+{% endblock %}
+
+<div id="toasts" aria-live="polite" aria-atomic="false"></div>
+
+{% if current_user.is_authenticated %}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+{% endif %}
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

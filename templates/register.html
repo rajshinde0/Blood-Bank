@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% block title %}Create account{% endblock %}
+
+{% block chrome %}
+<div class="auth">
+    <aside class="auth-brand">
+        <span class="mark">{{ icon.dropFill() }}</span>
+        <h1>Join LifeLink</h1>
+        <p class="tag">
+            Create a staff account to register donors, record transactions and
+            manage the patient queue.
+        </p>
+        <ul class="auth-points">
+            <li>{{ icon.userCheck() }} New accounts start with the Staff role</li>
+            <li>{{ icon.shield() }} Passwords are hashed with PBKDF2-SHA256</li>
+            <li>{{ icon.eye() }} Every action is written to the audit log</li>
+        </ul>
+    </aside>
+
+    <section class="auth-panel">
+        <div class="theme-slot">
+            <button class="icon-btn" type="button" data-theme-toggle aria-label="Switch theme">
+                <span class="theme-icon-light">{{ icon.moon() }}</span>
+                <span class="theme-icon-dark">{{ icon.sun() }}</span>
+            </button>
+        </div>
+
+        <div class="auth-form">
+            <h2>Create your account</h2>
+            <p class="sub">It takes a moment — then sign in and get started.</p>
+
+            <form method="POST" action="{{ url_for('register') }}" data-ajax
+                  data-reset="false" data-reload="false" data-busy-label="Creating…">
+                <div class="field">
+                    <label for="full_name">Full name</label>
+                    <input type="text" id="full_name" name="full_name" required
+                           autocomplete="name" placeholder="Jane Doe">
+                    <span class="field-error">{{ icon.warning() }}<span></span></span>
+                </div>
+                <div class="field">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" name="username" required minlength="3"
+                           autocomplete="username" placeholder="jdoe">
+                    <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    <span class="hint">At least 3 characters</span>
+                </div>
+                <div class="field">
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" required
+                           autocomplete="email" placeholder="jane@hospital.org">
+                    <span class="field-error">{{ icon.warning() }}<span></span></span>
+                </div>
+                <div class="field">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" name="password" required minlength="8"
+                           autocomplete="new-password" data-pw-meter placeholder="••••••••">
+                    <div class="pw-meter" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+                    <span class="field-error">{{ icon.warning() }}<span></span></span>
+                    <span class="hint">8+ characters with an uppercase letter, a lowercase letter and a digit</span>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">{{ icon.userCheck() }} Create account</button>
+            </form>
+
+            <p class="auth-alt">
+                Already registered? <a href="{{ url_for('login') }}">Sign in</a>
+            </p>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    /* Registration answers 201 with a message but no redirect, so send the
+       new user to the sign-in screen once the account exists. */
+    document.addEventListener('ajax:success', function () {
+        setTimeout(function () { window.location.href = "{{ url_for('login') }}"; }, 1200);
+    });
+</script>
+{% endblock %}
