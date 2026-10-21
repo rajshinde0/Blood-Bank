@@ -126,11 +126,20 @@ logs/
 .DS_Store
 
 # Project specific
-data/
+# NOTE: data/ holds the seed CSV files consumed by migrate_csv_to_db.py,
+# so the directory itself is tracked - only generated artifacts are ignored.
+data/*.db
+data/*.sqlite3
+instance/
 old_data/
 test_data/
 *.bak
 *.tmp
+
+# Compiled C++ artifacts (prog1.cpp source is tracked, the binary is not)
+*.exe
+*.out
+*.obj
 
 # Node modules (if any frontend build)
 node_modules/

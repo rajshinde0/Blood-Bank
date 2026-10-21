@@ -1,4 +1,9 @@
 # Docker ignore file for Blood Bank Management System
+# Virtualenvs - these would otherwise be copied into the build context
+.venv/
+venv/
+ENV/
+
 __pycache__/
 *.pyc
 *.pyo
@@ -30,3 +35,8 @@ data/
 .editorconfig
 Makefile
 setup.py
+
+# Not needed inside the image
+cpp_Backend/
+*.exe
+.github/

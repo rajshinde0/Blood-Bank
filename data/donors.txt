@@ -1,0 +1,4 @@
+1001,Rajwardhan Shinde,B+,18,1234567890
+1002,Amey Shirbhate,O+,19,999999999
+1003,Roshan Shinde,B+,19,9876543211
+1004,Anas S,O+,19,0987654321
