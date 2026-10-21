@@ -3,11 +3,14 @@
 
   These replace the Font Awesome CDN link so the UI renders correctly with no
   network access. Usage:  {% import "_icons.html" as icon %}  then  {{ icon.drop() }}
-  Every icon inherits the current text colour via stroke="currentColor".
+  Every icon inherits the current text colour via stroke="currentColor", and
+  carries an intrinsic 1em box so it stays text-sized wherever CSS does not
+  size it explicitly.
 #}
 
 {% macro _svg(path, fill=false) -%}
-<svg viewBox="0 0 24 24" fill="{{ 'currentColor' if fill else 'none' }}" stroke="{{ 'none' if fill else 'currentColor' }}"
+<svg viewBox="0 0 24 24" width="1em" height="1em"
+     fill="{{ 'currentColor' if fill else 'none' }}" stroke="{{ 'none' if fill else 'currentColor' }}"
      stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ path|safe }}</svg>
 {%- endmacro %}
 
