@@ -7,6 +7,7 @@ The environment is configured *before* importing the app so that the module-leve
 init_db() call lands on a throwaway database rather than the development one.
 """
 import os
+import re
 import tempfile
 
 # Must precede the app import - app.py builds its config and initialises the
@@ -503,6 +504,124 @@ class TestPagesRender:
 # ============================================================================
 # Validation helpers
 # ============================================================================
+
+class TestCSRF:
+    """CSRF protection.
+
+    The rest of the suite runs with WTF_CSRF_ENABLED = False (TestingConfig),
+    so these tests turn it back on explicitly - otherwise they would assert
+    nothing at all.
+    """
+
+    @pytest.fixture
+    def csrf_on(self, ctx):
+        app.config['WTF_CSRF_ENABLED'] = True
+        yield
+        app.config['WTF_CSRF_ENABLED'] = False
+
+    def _signed_in(self, client):
+        user = User(username='csrfuser', email='csrf@example.com',
+                    full_name='CSRF User', role=UserRole.STAFF)
+        user.set_password('TestPass123')
+        db.session.add(user)
+        db.session.commit()
+        return user
+
+    def test_post_without_token_is_rejected(self, csrf_on):
+        """A forged cross-site POST must not reach the handler."""
+        client = app.test_client()
+        response = client.post('/add_donor', data={
+            'id': 'X001', 'name': 'Forged Donor', 'blood_group': 'O+',
+            'age': '30', 'phone': '1234567890'
+        })
+
+        assert response.status_code == 400
+        assert Donor.query.filter_by(donor_id='X001').first() is None
+
+    def test_rejection_is_json_not_an_html_page(self, csrf_on):
+        """main.js parses the body, so the refusal has to be JSON."""
+        client = app.test_client()
+        response = client.post('/login', data={
+            'username': 'admin', 'password': 'Admin@123'
+        })
+
+        assert response.status_code == 400
+        body = response.get_json()
+        assert body is not None, 'CSRF refusal returned HTML, not JSON'
+        assert body['status'] == 'csrf_error'
+
+    def test_request_with_token_header_succeeds(self, csrf_on):
+        """The X-CSRFToken header that main.js sends is accepted."""
+        from flask_wtf.csrf import generate_csrf
+
+        client = app.test_client()
+        self._signed_in(client)
+
+        with client.session_transaction():
+            pass
+        with app.test_request_context():
+            pass
+
+        # Fetch a page to establish the session, then read its token.
+        page = client.get('/login')
+        token = re.search(
+            rb'name="csrf-token" content="([^"]+)"', page.data
+        ).group(1).decode()
+
+        response = client.post('/login', data={
+            'username': 'csrfuser', 'password': 'TestPass123'
+        }, headers={'X-CSRFToken': token})
+
+        assert response.status_code == 200, response.get_json()
+        assert response.get_json()['success'] is True
+
+    def test_hidden_form_field_also_works(self, csrf_on):
+        """A plain form post (no JS) carries the token as a hidden field."""
+        client = app.test_client()
+        self._signed_in(client)
+
+        page = client.get('/login')
+        token = re.search(
+            rb'name="csrf-token" content="([^"]+)"', page.data
+        ).group(1).decode()
+
+        response = client.post('/login', data={
+            'username': 'csrfuser', 'password': 'TestPass123',
+            'csrf_token': token
+        })
+
+        assert response.status_code == 200, response.get_json()
+
+    def test_healthz_stays_exempt(self, csrf_on):
+        """The container probe is not a browser form."""
+        client = app.test_client()
+        assert client.get('/healthz').status_code == 200
+
+    def test_logout_rejects_get(self, auth_client):
+        """A GET logout could be triggered by any third-party page."""
+        response = auth_client.get('/logout')
+        assert response.status_code == 405
+
+    def test_logout_accepts_post(self, auth_client):
+        response = auth_client.post('/logout')
+        assert response.status_code in (200, 302)
+        assert auth_client.get('/donors').status_code == 302  # session gone
+
+    def test_every_write_route_is_protected(self, csrf_on):
+        """No state-changing route may be reachable without a token."""
+        client = app.test_client()
+        routes = [
+            ('/add_donor', {}), ('/delete_donor/D001', {}),
+            ('/add_patient', {}), ('/add_transaction', {}),
+            ('/serve_patient', {}), ('/check_compatibility', {}),
+            ('/find_compatible_donors', {}), ('/register', {}),
+        ]
+        unprotected = [
+            path for path, data in routes
+            if client.post(path, data=data).status_code != 400
+        ]
+        assert not unprotected, f'reachable without a CSRF token: {unprotected}'
+
 
 class TestValidation:
 

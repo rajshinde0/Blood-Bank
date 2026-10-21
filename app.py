@@ -5,6 +5,7 @@ Refactored with Database, Authentication, Validation, and Advanced Features
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 from flask_login import LoginManager, login_required, login_user, logout_user, current_user
 from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask_wtf.csrf import CSRFProtect, CSRFError
 from functools import lru_cache
 from datetime import datetime, timedelta
 import heapq
@@ -42,6 +43,11 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 socketio = SocketIO(app, cors_allowed_origins="*")
+
+# CSRF covers every POST/PUT/PATCH/DELETE route. Browsers send the token in
+# the X-CSRFToken header (static/js/main.js attaches it to every fetch);
+# a plain form post would send it as a hidden csrf_token field.
+csrf = CSRFProtect(app)
 
 # Setup logging
 setup_logging(app)
@@ -286,7 +292,7 @@ def login():
     return render_template('login.html')
 
 
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
 @login_required
 def logout():
     """User logout"""
@@ -349,6 +355,7 @@ def index():
 
 
 @app.route('/healthz')
+@csrf.exempt
 def healthz():
     """Liveness probe for containers and load balancers (no auth required)"""
     try:
@@ -1082,6 +1089,20 @@ def handle_queue_update():
 # ============================================================================
 # ERROR HANDLERS
 # ============================================================================
+
+@app.errorhandler(CSRFError)
+def handle_csrf_error(error):
+    """Answer a missing/expired CSRF token in the JSON shape the UI expects.
+
+    Flask-WTF's default is an HTML 400 page, which main.js cannot parse -
+    the user would see a silent failure instead of a message.
+    """
+    logger.warning(f"CSRF rejected: {error.description} ({request.path})")
+    return jsonify({
+        'error': 'Your session expired or the form was stale. Reload the page and try again.',
+        'status': 'csrf_error'
+    }), 400
+
 
 @app.errorhandler(403)
 def forbidden(error):

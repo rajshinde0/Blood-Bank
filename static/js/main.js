@@ -9,6 +9,38 @@
     'use strict';
 
     /* ----------------------------------------------------------------------
+       CSRF
+       Every state-changing route is protected by Flask-WTF. The token is
+       rendered into a <meta> by base.html; these helpers put it on the
+       X-CSRFToken header of every request that needs one, so no form has to
+       carry a hidden field.
+       ---------------------------------------------------------------------- */
+    function csrfToken() {
+        var meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute('content') : '';
+    }
+
+    function headers(extra) {
+        var h = Object.assign({ 'X-Requested-With': 'XMLHttpRequest' }, extra || {});
+        var token = csrfToken();
+        if (token) h['X-CSRFToken'] = token;
+        return h;
+    }
+
+    /* Shared POST used by this file and by page-level scripts. */
+    async function post(url, body) {
+        var response = await fetch(url, {
+            method: 'POST',
+            body: body,
+            headers: headers(),
+            credentials: 'same-origin'
+        });
+        var data = {};
+        try { data = await response.json(); } catch (e) { /* non-JSON body */ }
+        return { ok: response.ok, status: response.status, data: data };
+    }
+
+    /* ----------------------------------------------------------------------
        Theme
        The no-flash script in <head> has already applied the stored choice;
        here we only wire the toggle and keep it in sync.
@@ -137,7 +169,8 @@
             var response = await fetch(form.action || window.location.pathname, {
                 method: (form.method || 'POST').toUpperCase(),
                 body: new FormData(form),
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                headers: headers(),
+                credentials: 'same-origin'
             });
 
             var data = {};
@@ -191,11 +224,7 @@
         if (trigger.dataset.confirm && !window.confirm(trigger.dataset.confirm)) return;
 
         trigger.classList.add('is-busy');
-        fetch(trigger.dataset.post, {
-            method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest' }
-        })
-            .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        post(trigger.dataset.post, null)
             .then(function (res) {
                 var d = res.data;
                 if (res.ok && d.success) {
@@ -249,6 +278,12 @@
        ---------------------------------------------------------------------- */
     window.LifeLink = {
         toast: toast,
+
+        /* POST with the CSRF token attached. Page scripts must use this
+           rather than calling fetch directly, or the request is rejected. */
+        post: post,
+        csrfToken: csrfToken,
+        headers: headers,
 
         describe: function (label, data) {
             if (label === 'serve' && data.patient) {

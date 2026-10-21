@@ -13,6 +13,9 @@ SQLAlchemy==2.0.48
 # Auth & sessions
 Flask-Login==0.6.2
 
+# CSRF protection for every state-changing route
+Flask-WTF==1.2.1
+
 # Real-time updates
 Flask-SocketIO==5.3.4
 python-socketio==5.9.0

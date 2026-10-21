@@ -53,6 +53,12 @@ class Config:
     # Security
     PASSWORD_HASH_METHOD = os.getenv('PASSWORD_HASH_METHOD', 'pbkdf2:sha256')
 
+    # CSRF. The token stays valid for as long as the session does - a separate
+    # expiry would silently break a dashboard that was left open, and the
+    # session lifetime above is already the real bound.
+    WTF_CSRF_ENABLED = True
+    WTF_CSRF_TIME_LIMIT = None
+
     # Cache
     CACHE_TYPE = 'simple'
     CACHE_DEFAULT_TIMEOUT = 300

@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="LifeLink - blood bank management: donors, inventory, priority patient queue and compatibility checks.">
+    {# main.js reads this and sends it as X-CSRFToken on every fetch. #}
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>{% block title %}LifeLink{% endblock %} · LifeLink Blood Bank</title>
 
     {# Apply the stored theme before first paint so dark users never see a white flash. #}
@@ -62,12 +64,17 @@
                     <span class="theme-icon-dark">{{ icon.sun() }}</span>
                 </button>
 
-                <a class="user-chip" href="{{ url_for('logout') }}" title="Sign out">
-                    <span class="avatar">{{ current_user.full_name[:1]|upper }}</span>
-                    <span class="uname">{{ current_user.username }}</span>
-                    <span class="role">{{ current_user.role.value }}</span>
-                    {{ icon.logout() }}
-                </a>
+                {# A GET logout can be triggered by any third-party page, so
+                   signing out is a POST carrying the CSRF token. #}
+                <form method="POST" action="{{ url_for('logout') }}" class="logout-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="user-chip" title="Sign out">
+                        <span class="avatar">{{ current_user.full_name[:1]|upper }}</span>
+                        <span class="uname">{{ current_user.username }}</span>
+                        <span class="role">{{ current_user.role.value }}</span>
+                        {{ icon.logout() }}
+                    </button>
+                </form>
 
                 <label class="nav-burger" for="nav-toggle" aria-label="Toggle navigation">{{ icon.menu() }}</label>
             </div>

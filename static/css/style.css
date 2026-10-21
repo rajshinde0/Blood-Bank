@@ -269,8 +269,10 @@ svg { flex: none; }
 
 .nav-tail { display: flex; align-items: center; gap: var(--s2); margin-left: auto; }
 
+.logout-form { display: flex; }
 .user-chip {
     display: inline-flex; align-items: center; gap: var(--s2);
+    font-family: inherit; font-size: .83rem; cursor: pointer;
     padding: 5px 11px 5px 5px; border-radius: var(--r-pill);
     background: var(--surface-sunken); border: 1px solid var(--border);
     font-size: .83rem; color: var(--text); text-decoration: none;

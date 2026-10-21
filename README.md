@@ -10,7 +10,7 @@ implementation of the underlying structures in [`cpp_Backend/`](cpp_Backend/).
 ![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-2.3-000000?logo=flask&logoColor=white)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00)
-![Tests](https://img.shields.io/badge/tests-50%20passing-16794a)
+![Tests](https://img.shields.io/badge/tests-58%20passing-16794a)
 
 ---
 
@@ -41,6 +41,7 @@ implementation of the underlying structures in [`cpp_Backend/`](cpp_Backend/).
 | **Transactions** | Donations in and issues out, with inventory updated atomically |
 | **Compatibility** | Single-pair check, "who can donate to this patient", and the full 8×8 matrix |
 | **Auth** | Login / registration, PBKDF2-SHA256 hashing, role field (admin / doctor / staff / nurse) |
+| **CSRF** | Every state-changing route protected by Flask-WTF; the token rides on `X-CSRFToken` |
 | **Audit** | Every create, delete, login and report written to `audit_logs` with IP and user agent |
 | **Real time** | Socket.IO pushes donor, patient, transaction and low-stock events to open tabs |
 | **Interface** | Custom design system, light and dark themes, responsive down to 375px |
@@ -134,7 +135,7 @@ Everything is read from the environment (or a `.env` file). See
 ├── logger.py               # Rotating file + console logging
 ├── wsgi.py                 # Production entry point
 ├── migrate_csv_to_db.py    # One-off import from the legacy flat files
-├── test_app.py             # 50 tests
+├── test_app.py             # 58 tests
 │
 ├── templates/              # Jinja templates, all extending base.html
 │   ├── base.html           #   layout: nav, theme toggle, toasts
@@ -157,6 +158,11 @@ All routes except `/login`, `/register` and `/healthz` require an authenticated
 session. Write endpoints accept `application/x-www-form-urlencoded` and answer
 with JSON.
 
+Every `POST` requires a CSRF token, sent either as the `X-CSRFToken` header or
+as a `csrf_token` form field — see [Security notes](#security-notes). Calling
+these from a script means fetching a page first and reading the token out of its
+`<meta name="csrf-token">`.
+
 ### Pages
 
 | Method | Route | Purpose |
@@ -174,7 +180,7 @@ with JSON.
 |---|---|---|---|
 | `POST` | `/login` | `username`, `password` | `{success, redirect}` · 401 on bad credentials |
 | `POST` | `/register` | `username`, `email`, `password`, `full_name` | 201 · 400 on duplicate or weak password |
-| `GET` | `/logout` | — | Redirect to login |
+| `POST` | `/logout` | — | Redirect to login (POST so it cannot be forged) |
 | `POST` | `/add_donor` | `id`, `name`, `blood_group`, `age`, `phone`, `email?`, `city?` | 201 · 409 if the ID exists |
 | `POST` | `/delete_donor/<donor_id>` | — | 200 (soft delete) |
 | `POST` | `/add_patient` | `id`, `name`, `age`, `phone`, `blood_group`, `urgency`, `deadline_hours?` | 201 |
@@ -222,15 +228,17 @@ to convert — a `LIKE '%O+%'` filter against those columns can never match.
 ## Testing
 
 ```bash
-pytest test_app.py -v                      # 50 tests
+pytest test_app.py -v                      # 58 tests
 pytest test_app.py --cov=. --cov-report=term-missing
 ```
 
 Tests run against a temporary SQLite file configured before `app` is imported,
 so they never touch your development database. Coverage includes authentication,
-donor CRUD and search, the priority queue (ordering, restart recovery, no
-double-serving), inventory thresholds, transactions in both directions, every
-page rendering, and the validation helpers.
+CSRF (rejection without a token, acceptance with one, and a sweep asserting no
+write route is reachable unprotected), donor CRUD and search, the priority queue
+(ordering, restart recovery, no double-serving), inventory thresholds,
+transactions in both directions, every page rendering, and the validation
+helpers.
 
 ---
 
@@ -261,10 +269,24 @@ Duplicate IDs are skipped, so it is safe to re-run.
 
 ---
 
+## Security notes
+
+- **CSRF.** `Flask-WTF`'s `CSRFProtect` covers every `POST`. `base.html` renders
+  the token into a `<meta name="csrf-token">`, and `static/js/main.js` attaches
+  it as `X-CSRFToken` to every request — so no form needs a hidden field, and
+  page-level scripts must use `window.LifeLink.post()` rather than calling
+  `fetch` directly or they will be refused with a 400.
+- A stale or missing token is answered as JSON (`{"status": "csrf_error"}`), not
+  Flask-WTF's default HTML page, so the UI can surface it as a readable message.
+- `WTF_CSRF_TIME_LIMIT` is `None`: the token lives as long as the session, whose
+  own lifetime (`SESSION_TIMEOUT`) is the real bound. A separate expiry would
+  silently break a dashboard left open.
+- **Signing out is a `POST`** carrying the token — a `GET` logout can be
+  triggered by any third-party page.
+- `/healthz` is `@csrf.exempt`: it is a liveness probe, not a browser form.
+
 ## Known limitations
 
-- **No CSRF protection.** Forms post without a token. Adding Flask-WTF's
-  `CSRFProtect` is the natural next step before any real deployment.
 - **`datetime.utcnow()` throughout.** Deprecated in Python 3.12+. Migrating to
   timezone-aware datetimes has to happen in one sweep: SQLite returns naive
   values, so a partial migration would mix aware and naive datetimes and break

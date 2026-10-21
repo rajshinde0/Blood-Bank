@@ -120,13 +120,10 @@
         var SVG_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="m8.2 12.2 2.6 2.6 5-5.2"/></svg>';
         var SVG_NO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="m14.8 9.2-5.6 5.6M9.2 9.2l5.6 5.6"/></svg>';
 
-        async function post(url, form) {
-            var response = await fetch(url, {
-                method: 'POST',
-                body: new FormData(form),
-                headers: { 'X-Requested-With': 'XMLHttpRequest' }
-            });
-            return { ok: response.ok, data: await response.json() };
+        /* Routed through the shared helper so the CSRF token is attached;
+           a bare fetch() here would be rejected with a 400. */
+        function post(url, form) {
+            return window.LifeLink.post(url, new FormData(form));
         }
 
         document.getElementById('compatibilityForm').addEventListener('submit', async function (e) {
