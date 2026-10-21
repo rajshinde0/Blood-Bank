@@ -22,7 +22,7 @@ import pytest  # noqa: E402
 from datetime import datetime, timedelta, timezone  # noqa: E402
 from werkzeug.exceptions import BadRequest  # noqa: E402
 
-from app import app, db, check_compatibility, patient_queue  # noqa: E402
+from app import app, db, check_compatibility, patient_queue, socketio  # noqa: E402
 from models import (  # noqa: E402
     User, Donor, Patient, Inventory, Transaction, BloodType,
     UrgencyLevel, UserRole, utcnow
@@ -69,7 +69,7 @@ def auth_client(client):
         username='testuser',
         email='test@example.com',
         full_name='Test User',
-        role=UserRole.STAFF
+        role=UserRole.ADMIN        # the suite exercises writes and deletes
     )
     user.set_password('TestPass123')
     db.session.add(user)
@@ -618,7 +618,7 @@ class TestCSRF:
 
     def _signed_in(self, client):
         user = User(username='csrfuser', email='csrf@example.com',
-                    full_name='CSRF User', role=UserRole.STAFF)
+                    full_name='CSRF User', role=UserRole.ADMIN)
         user.set_password('TestPass123')
         db.session.add(user)
         db.session.commit()
@@ -718,6 +718,133 @@ class TestCSRF:
             if client.post(path, data=data).status_code != 400
         ]
         assert not unprotected, f'reachable without a CSRF token: {unprotected}'
+
+
+class TestAuthorisation:
+    """Registration is open, so @login_required alone is not a guard.
+
+    Without a role check any stranger could register and then delete records.
+    """
+
+    def _user(self, client, role, username='roletest'):
+        user = User(username=username, email=f'{username}@example.com',
+                    full_name='Role Test', role=role)
+        user.set_password('TestPass123')
+        db.session.add(user)
+        db.session.commit()
+        assert client.post('/login', data={
+            'username': username, 'password': 'TestPass123'
+        }).status_code == 200
+        return user
+
+    def test_new_registrations_are_read_only(self, client):
+        """The role a self-registered account receives must not allow writes."""
+        assert client.post('/register', data={
+            'username': 'stranger', 'email': 'stranger@example.com',
+            'password': 'Stranger123', 'full_name': 'A Stranger'
+        }).status_code == 201
+
+        user = User.query.filter_by(username='stranger').first()
+        assert user.role is UserRole.STAFF
+        assert user.can_write is False
+        assert user.can_admin is False
+
+    def test_staff_cannot_write(self, client):
+        self._user(client, UserRole.STAFF)
+
+        for path, data in [
+            ('/add_donor', {'id': 'R001', 'name': 'Blocked Donor',
+                            'blood_group': 'O+', 'age': '30', 'phone': '1234567890'}),
+            ('/add_patient', {'id': 'R002', 'name': 'Blocked Patient', 'age': '30',
+                              'phone': '1234567890', 'blood_group': 'O+', 'urgency': '2'}),
+            ('/add_transaction', {'action': 'donation', 'donor_id': 'D001',
+                                  'blood_group': 'O+', 'quantity': '5'}),
+            ('/serve_patient', {}),
+        ]:
+            response = client.post(path, data=data)
+            assert response.status_code == 403, f'{path} allowed a read-only user'
+            assert response.get_json()['status'] == 'forbidden'
+
+        assert Donor.query.filter_by(donor_id='R001').first() is None
+
+    def test_staff_can_still_read(self, client):
+        self._user(client, UserRole.STAFF)
+        for path in ['/', '/donors', '/inventory', '/patients', '/transactions']:
+            assert client.get(path).status_code == 200, path
+
+    def test_nurse_can_write_but_not_delete(self, client):
+        self._user(client, UserRole.NURSE, 'nursetest')
+
+        assert client.post('/add_donor', data={
+            'id': 'R010', 'name': 'Nurse Donor', 'blood_group': 'O+',
+            'age': '30', 'phone': '1234567890'
+        }).status_code == 201
+
+        response = client.post('/delete_donor/R010')
+        assert response.status_code == 403
+        assert Donor.query.filter_by(donor_id='R010').first().is_active is True
+
+    def test_admin_can_delete(self, client):
+        self._user(client, UserRole.ADMIN, 'admintest')
+
+        assert client.post('/add_donor', data={
+            'id': 'R020', 'name': 'Admin Donor', 'blood_group': 'O+',
+            'age': '30', 'phone': '1234567890'
+        }).status_code == 201
+        assert client.post('/delete_donor/R020').status_code == 200
+
+    def test_seeded_admin_has_admin_role(self, ctx):
+        """init_db creates the bootstrap account; it must be able to manage."""
+        from app import init_db
+        init_db()
+        admin = User.query.filter_by(username='admin').first()
+        assert admin.role is UserRole.ADMIN
+        assert admin.can_admin is True
+
+    def test_anonymous_cannot_write(self, client):
+        assert client.post('/add_donor', data={
+            'id': 'R030', 'name': 'Anon', 'blood_group': 'O+',
+            'age': '30', 'phone': '1234567890'
+        }).status_code == 302        # redirected to login, never reaches the handler
+
+
+class TestSocketAuthorisation:
+    """Socket events carry patient names, blood groups and urgency."""
+
+    def test_anonymous_connection_is_refused(self, client):
+        sio = socketio.test_client(app, flask_test_client=client)
+        assert sio.is_connected() is False
+
+    def test_authenticated_connection_is_accepted(self, auth_client):
+        sio = socketio.test_client(app, flask_test_client=auth_client)
+        assert sio.is_connected() is True
+        sio.disconnect()
+
+    def test_anonymous_cannot_even_emit(self, client):
+        """The connection is refused outright, so no event can be sent."""
+        sio = socketio.test_client(app, flask_test_client=client)
+        with pytest.raises(RuntimeError, match='not connected'):
+            sio.emit('request_queue_update')
+
+    def test_authenticated_queue_request_is_handled(self, auth_client):
+        """An authenticated client's request reaches the handler.
+
+        The assertion stops at "does not raise" deliberately: Flask-SocketIO's
+        test client does not capture emits made from inside a handler (verified
+        with a trivial control handler that demonstrably ran yet produced an
+        empty get_received()). Delivery is covered end-to-end in a real browser
+        instead - two signed-in tabs, one adding a donor and the other
+        receiving donor_added.
+        """
+        auth_client.post('/add_patient', data={
+            'id': 'SOCK1', 'name': 'Queue Member', 'age': '30',
+            'phone': '1234567890', 'blood_group': 'O+', 'urgency': '2'
+        })
+
+        sio = socketio.test_client(app, flask_test_client=auth_client)
+        assert sio.is_connected() is True
+        sio.emit('request_queue_update')      # must not raise
+        sio.disconnect()
 
 
 class TestValidation:

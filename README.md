@@ -10,7 +10,7 @@ implementation of the underlying structures in [`cpp_Backend/`](cpp_Backend/).
 ![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-2.3-000000?logo=flask&logoColor=white)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00)
-![Tests](https://img.shields.io/badge/tests-65%20passing-16794a)
+![Tests](https://img.shields.io/badge/tests-76%20passing-16794a)
 
 ---
 
@@ -40,7 +40,8 @@ implementation of the underlying structures in [`cpp_Backend/`](cpp_Backend/).
 | **Patients** | Priority queue ordered by urgency, then by earliest deadline |
 | **Transactions** | Donations in and issues out, with inventory updated atomically |
 | **Compatibility** | Single-pair check, "who can donate to this patient", and the full 8×8 matrix |
-| **Auth** | Login / registration, PBKDF2-SHA256 hashing, role field (admin / doctor / staff / nurse) |
+| **Auth** | Login / registration, PBKDF2-SHA256 hashing |
+| **Roles** | Enforced: new accounts are read-only; writes need nurse/doctor, deletes need admin |
 | **CSRF** | Every state-changing route protected by Flask-WTF; the token rides on `X-CSRFToken` |
 | **Audit** | Every create, delete, login and report written to `audit_logs` with IP and user agent |
 | **Real time** | Socket.IO pushes donor, patient, transaction and low-stock events to open tabs |
@@ -138,7 +139,7 @@ Everything is read from the environment (or a `.env` file). See
 ├── logger.py               # Rotating file + console logging
 ├── wsgi.py                 # Production entry point
 ├── migrate_csv_to_db.py    # One-off import from the legacy flat files
-├── test_app.py             # 65 tests
+├── test_app.py             # 76 tests
 │
 ├── templates/              # Jinja templates, all extending base.html
 │   ├── base.html           #   layout: nav, theme toggle, toasts
@@ -231,14 +232,15 @@ to convert — a `LIKE '%O+%'` filter against those columns can never match.
 ## Testing
 
 ```bash
-pytest test_app.py -v                      # 65 tests
+pytest test_app.py -v                      # 76 tests
 pytest test_app.py --cov=. --cov-report=term-missing
 ```
 
 Tests run against a temporary SQLite file configured before `app` is imported,
 so they never touch your development database. Coverage includes authentication,
 CSRF (rejection without a token, acceptance with one, and a sweep asserting no
-write route is reachable unprotected), timezone awareness (aware round-trips
+write route is reachable unprotected), authorisation (read-only registrations,
+each role's limits, and anonymous socket refusal), timezone awareness (aware round-trips
 through SQLite, and a heap holding patients both with and without deadlines),
 donor CRUD and search, the priority queue (ordering, restart recovery, no
 double-serving), inventory thresholds, transactions in both directions, every
@@ -289,6 +291,36 @@ Duplicate IDs are skipped, so it is safe to re-run.
   triggered by any third-party page.
 - `/healthz` is `@csrf.exempt`: it is a liveness probe, not a browser form.
 
+### Roles
+
+Registration is open, so `@login_required` alone is not a guard — without a
+role check any stranger could register and then delete records. Permissions
+collapse to two gates rather than a per-route matrix:
+
+| Role | May |
+|---|---|
+| `staff` | **Read only.** What a new registration receives. |
+| `nurse`, `doctor` | + register donors and patients, record transactions, serve the queue |
+| `admin` | + delete records |
+
+Routes are gated with `@write_required` / `@admin_required`, which answer JSON
+for the fetch layer and the themed error page for a navigation. The UI hides
+what the current role cannot do, but **the gate is server-side** — bypassing the
+hidden form still returns 403.
+
+Grant access from the command line:
+
+```bash
+flask list-users
+flask set-role alice nurse
+```
+
+### Real-time
+
+Socket.IO events carry patient names, blood groups and urgency levels, so
+`connect` refuses any session that is not signed in, and `request_queue_update`
+re-checks (a session can expire while the socket stays open).
+
 ### Datetimes
 
 Every datetime is timezone-aware UTC. `models.utcnow()` replaces the deprecated
@@ -310,8 +342,8 @@ so a naive value cannot creep back in.
 
 - **Single-process queue.** `PatientQueue` is per-process. Running more than one
   worker needs the heap moved into the database or a shared store.
-- **Roles are not enforced.** The `role` column exists and is displayed, but no
-  route checks it yet.
+- **No rate limiting on login.** Passwords can be guessed indefinitely;
+  failures are audited but nothing acts on them. `Flask-Limiter` would close it.
 - **No license file.** The repository has no `LICENSE`, so default copyright
   applies. Add one if you want others to reuse the code.
 

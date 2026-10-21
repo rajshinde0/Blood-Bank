@@ -14,15 +14,18 @@
         </p>
     </div>
     <div class="page-head-actions">
+        {% if current_user.can_write %}
         <button class="btn btn-secondary" type="button"
                 data-post="{{ url_for('serve_patient') }}" data-post-label="serve"
                 data-confirm="Serve the highest-priority patient now?">
             {{ icon.userCheck() }} Serve next patient
         </button>
+        {% endif %}
     </div>
 </div>
 
 <div class="stack">
+{% if current_user.can_write %}
     <section class="card form-card">
         <div class="card-head">
             <h2>{{ icon.plus() }} Add patient to the queue</h2>
@@ -87,6 +90,14 @@
             </form>
         </div>
     </section>
+{% else %}
+    <div class="alert alert-info">
+        {{ icon.info() }}
+        <div>Your role (<b>{{ current_user.role.value }}</b>) is read-only, so you cannot add patients to the queue.
+            An administrator can grant access with
+            <code>flask set-role {{ current_user.username }} nurse</code>.</div>
+    </div>
+{% endif %}
 
     <section class="card">
         <div class="card-head">

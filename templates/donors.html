@@ -16,6 +16,7 @@
 </div>
 
 <div class="stack">
+{% if current_user.can_write %}
     <section class="card form-card">
         <div class="card-head">
             <h2>{{ icon.plus() }} Register a donor</h2>
@@ -76,6 +77,14 @@
             </form>
         </div>
     </section>
+{% else %}
+    <div class="alert alert-info">
+        {{ icon.info() }}
+        <div>Your role (<b>{{ current_user.role.value }}</b>) is read-only, so you cannot register donors.
+            An administrator can grant access with
+            <code>flask set-role {{ current_user.username }} nurse</code>.</div>
+    </div>
+{% endif %}
 
     <section class="card">
         <div class="card-head">
@@ -125,6 +134,7 @@
                                     <td class="cell-muted">{{ donor.city or '—' }}</td>
                                     <td class="num">{{ donor.donation_count }}</td>
                                     <td class="cell-actions">
+                                        {% if current_user.can_admin %}
                                         <form action="{{ url_for('delete_donor', donor_id=donor.donor_id) }}"
                                               method="POST" data-ajax data-reset="false"
                                               data-confirm="Remove donor {{ donor.name }} from the registry?"
@@ -133,6 +143,9 @@
                                                 {{ icon.trash() }} Remove
                                             </button>
                                         </form>
+                                        {% else %}
+                                        <span class="cell-muted">&mdash;</span>
+                                        {% endif %}
                                     </td>
                                 </tr>
                             {% endfor %}

@@ -61,11 +61,29 @@ class UrgencyLevel(enum.Enum):
 
 
 class UserRole(enum.Enum):
-    """User roles"""
+    """User roles.
+
+    Permissions collapse to two gates rather than a per-route matrix - enough
+    to keep self-registered accounts harmless without inventing policy this
+    project cannot justify:
+
+        STAFF   read-only. The role new registrations receive.
+        NURSE   + register donors and patients, record transactions, serve
+                the queue.
+        DOCTOR  same as NURSE (clinical staff).
+        ADMIN   + delete records.
+    """
     ADMIN = 'admin'
     DOCTOR = 'doctor'
     STAFF = 'staff'
     NURSE = 'nurse'
+
+
+#: Roles permitted to change records.
+WRITE_ROLES = (UserRole.NURSE, UserRole.DOCTOR, UserRole.ADMIN)
+
+#: Roles permitted to delete records.
+ADMIN_ROLES = (UserRole.ADMIN,)
 
 
 class BloodType(enum.Enum):
@@ -104,7 +122,17 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         """Check if password matches hash"""
         return check_password_hash(self.password_hash, password)
-    
+
+    @property
+    def can_write(self):
+        """May create or modify records (not delete them)."""
+        return self.role in WRITE_ROLES
+
+    @property
+    def can_admin(self):
+        """May delete records."""
+        return self.role in ADMIN_ROLES
+
     def __repr__(self):
         return f'<User {self.username}>'
 
@@ -210,22 +238,6 @@ class Transaction(db.Model):
     
     def __repr__(self):
         return f'<Transaction {self.transaction_id}: {self.action}>'
-
-
-class BloodCompatibility(db.Model):
-    """Blood compatibility reference (cached for faster lookups)"""
-    __tablename__ = 'blood_compatibility'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    donor_blood = db.Column(db.Enum(BloodType), nullable=False, index=True)
-    patient_blood = db.Column(db.Enum(BloodType), nullable=False, index=True)
-    compatible = db.Column(db.Boolean, nullable=False)
-    created_at = db.Column(UTCDateTime, default=utcnow)
-    
-    __table_args__ = (db.UniqueConstraint('donor_blood', 'patient_blood', name='uq_compatibility'),)
-    
-    def __repr__(self):
-        return f'<Compatibility {self.donor_blood} -> {self.patient_blood}: {self.compatible}>'
 
 
 class AuditLog(db.Model):

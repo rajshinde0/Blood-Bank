@@ -4,11 +4,12 @@ Refactored with Database, Authentication, Validation, and Advanced Features
 """
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 from flask_login import LoginManager, login_required, login_user, logout_user, current_user
-from flask_socketio import SocketIO, emit, join_room, leave_room
+from flask_socketio import SocketIO, emit
 from flask_wtf.csrf import CSRFProtect, CSRFError
-from functools import lru_cache
+from functools import lru_cache, wraps
 from datetime import datetime, timedelta, timezone
 import heapq
+import click
 import logging
 import os
 from dotenv import load_dotenv
@@ -16,7 +17,7 @@ from dotenv import load_dotenv
 # Import models and config
 from config import get_config
 from models import (
-    db, User, Donor, Patient, Inventory, Transaction, BloodCompatibility,
+    db, User, Donor, Patient, Inventory, Transaction,
     AuditLog, SystemAlert, UrgencyLevel, UserRole, BloodType, utcnow
 )
 from utils import (
@@ -195,6 +196,46 @@ def init_db():
 # Initialize database on app startup
 with app.app_context():
     init_db()
+
+
+# ============================================================================
+# AUTHORISATION
+# ============================================================================
+
+def require_permission(attribute, label):
+    """Gate a route on a User permission property (can_write / can_admin).
+
+    @login_required only proves *someone* is signed in. Registration is open,
+    so without this any stranger could register and then delete records.
+
+    Answers JSON for the fetch layer and the themed page for a navigation,
+    decided by the Accept header.
+    """
+    def decorator(view):
+        @wraps(view)
+        @login_required
+        def wrapped(*args, **kwargs):
+            if not getattr(current_user, attribute, False):
+                logger.warning(
+                    f"Denied {request.path} for {current_user.username} "
+                    f"(role={current_user.role.value}, needs {label})"
+                )
+                message = f'Your role ({current_user.role.value}) cannot {label}.'
+
+                if request.accept_mimetypes.best == 'text/html' and                         not request.headers.get('X-Requested-With'):
+                    return render_template('error.html', code=403, error=message), 403
+                return jsonify({'error': message, 'status': 'forbidden'}), 403
+
+            return view(*args, **kwargs)
+        return wrapped
+    return decorator
+
+
+#: May create or modify records.
+write_required = require_permission('can_write', 'change records')
+
+#: May delete records.
+admin_required = require_permission('can_admin', 'delete records')
 
 
 # ============================================================================
@@ -428,7 +469,7 @@ def donors():
 
 
 @app.route('/add_donor', methods=['POST'])
-@login_required
+@write_required
 @handle_exceptions
 def add_donor():
     """Add new donor"""
@@ -483,7 +524,7 @@ def add_donor():
 
 
 @app.route('/delete_donor/<donor_id>', methods=['POST'])
-@login_required
+@admin_required
 @handle_exceptions
 def delete_donor(donor_id):
     """Soft delete donor"""
@@ -579,7 +620,7 @@ def transactions():
 
 
 @app.route('/add_transaction', methods=['POST'])
-@login_required
+@write_required
 @handle_exceptions
 def add_transaction():
     """Record a transaction (donation or issue)"""
@@ -733,7 +774,7 @@ def patients():
 
 
 @app.route('/add_patient', methods=['POST'])
-@login_required
+@write_required
 @handle_exceptions
 def add_patient():
     """Add patient to priority queue"""
@@ -808,7 +849,7 @@ def add_patient():
 
 
 @app.route('/serve_patient', methods=['POST'])
-@login_required
+@write_required
 @handle_exceptions
 def serve_patient():
     """Serve next patient from queue"""
@@ -1074,8 +1115,17 @@ def report_transactions():
 
 @socketio.on('connect')
 def handle_connect():
-    """Handle client connection"""
-    logger.info(f"Client connected: {request.sid}")
+    """Accept a websocket only from a signed-in session.
+
+    These events carry patient names, blood groups and urgency levels.
+    Without this check any anonymous client that could reach the server
+    received all of it - returning False refuses the connection.
+    """
+    if not current_user.is_authenticated:
+        logger.warning(f"Refused anonymous socket connection from {request.remote_addr}")
+        return False
+
+    logger.info(f"Client connected: {current_user.username} ({request.sid})")
 
 
 @socketio.on('disconnect')
@@ -1086,7 +1136,15 @@ def handle_disconnect():
 
 @socketio.on('request_queue_update')
 def handle_queue_update():
-    """Handle queue update request"""
+    """Broadcast the current queue.
+
+    Re-checked rather than relying on the connect handler alone: a session
+    can expire or be revoked while the socket stays open.
+    """
+    if not current_user.is_authenticated:
+        logger.warning("Refused queue update for an unauthenticated socket")
+        return
+
     patients = Patient.query.filter_by(served=False).all()
     patient_data = [
         {
@@ -1098,7 +1156,10 @@ def handle_queue_update():
         for p in patients
     ]
     
-    emit('queue_update', {'patients': patient_data, 'size': len(patient_data)}, broadcast=True)
+    # Reply to the client that asked, rather than broadcasting: this is a
+    # request/response refresh, and other clients already receive
+    # patient_added / patient_served as they happen.
+    emit('queue_update', {'patients': patient_data, 'size': len(patient_data)})
 
 
 # ============================================================================
@@ -1148,6 +1209,37 @@ def internal_error(error):
 # ============================================================================
 # COMMAND LINE INTERFACE
 # ============================================================================
+
+@app.cli.command('set-role')
+@click.argument('username')
+@click.argument('role', type=click.Choice([r.value for r in UserRole]))
+def set_role(username, role):
+    """Change a user's role.
+
+    New registrations are read-only STAFF by design, so this is how an
+    administrator grants write access:
+
+        flask set-role alice nurse
+    """
+    user = User.query.filter_by(username=username).first()
+    if not user:
+        raise click.ClickException(f'No user named {username!r}')
+
+    previous = user.role.value
+    user.role = UserRole(role)
+    db.session.commit()
+
+    click.echo(f'{username}: {previous} -> {role}')
+    logger.info(f"Role changed via CLI: {username} {previous} -> {role}")
+
+
+@app.cli.command('list-users')
+def list_users():
+    """List users and their roles."""
+    for user in User.query.order_by(User.username).all():
+        flag = 'write' if user.can_write else 'read-only'
+        click.echo(f'{user.username:20s} {user.role.value:8s} {flag}')
+
 
 @app.shell_context_processor
 def make_shell_context():
