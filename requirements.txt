@@ -21,8 +21,6 @@ Flask-SocketIO==5.3.4
 python-socketio==5.9.0
 python-engineio==4.5.1
 
-# Cross-origin support for the API
-Flask-CORS==4.0.0
 
 # Configuration
 python-dotenv==1.0.0

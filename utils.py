@@ -174,19 +174,6 @@ def handle_exceptions(f):
     return decorated_function
 
 
-def require_json_data(f):
-    """Decorator to require JSON request data"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not request.is_json:
-            return jsonify({
-                'error': 'Request must be JSON',
-                'status': 'error'
-            }), 400
-        return f(*args, **kwargs)
-    return decorated_function
-
-
 # ============================================================================
 # FORMATTING FUNCTIONS
 # ============================================================================
@@ -194,19 +181,6 @@ def require_json_data(f):
 def format_blood_group(blood_group):
     """Format blood group to standard format"""
     return blood_group.strip().upper()
-
-
-def format_phone(phone):
-    """Format phone number"""
-    digits = re.sub(r'\D', '', phone)
-    return digits[-10:] if len(digits) >= 10 else phone
-
-
-def format_datetime(dt, format_str='%Y-%m-%d %H:%M:%S'):
-    """Format datetime object to string"""
-    if isinstance(dt, datetime):
-        return dt.strftime(format_str)
-    return str(dt)
 
 
 def get_urgency_label(urgency_level):
@@ -296,41 +270,3 @@ def generate_transaction_id(action, blood_group, timestamp=None):
     
     return f'{action_prefix}_{blood_prefix}_{time_str}'
 
-
-def paginate(query, page=1, per_page=20):
-    """Paginate query results"""
-    try:
-        page = int(page)
-        per_page = int(per_page)
-        
-        if page < 1:
-            page = 1
-        if per_page < 1 or per_page > 100:
-            per_page = 20
-        
-    except ValueError:
-        page = 1
-        per_page = 20
-    
-    paginated = query.paginate(page=page, per_page=per_page)
-    
-    return {
-        'items': paginated.items,
-        'page': page,
-        'per_page': per_page,
-        'total': paginated.total,
-        'pages': paginated.pages,
-        'has_next': paginated.has_next,
-        'has_prev': paginated.has_prev
-    }
-
-
-def dict_to_json_safe(data):
-    """Convert dict with datetime to JSON-safe format"""
-    if isinstance(data, dict):
-        return {k: dict_to_json_safe(v) for k, v in data.items()}
-    elif isinstance(data, list):
-        return [dict_to_json_safe(item) for item in data]
-    elif isinstance(data, datetime):
-        return data.isoformat()
-    return data

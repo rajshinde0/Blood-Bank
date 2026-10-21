@@ -14,7 +14,9 @@ CSV_DIR = os.getenv('SEED_DIR', 'data')
 DONORS_FILE = os.path.join(CSV_DIR, 'donors.txt')
 INVENTORY_FILE = os.path.join(CSV_DIR, 'inventory.txt')
 TRANSACTIONS_FILE = os.path.join(CSV_DIR, 'transactions.txt')
-PATIENTS_FILE = os.path.join(CSV_DIR, 'patients.txt')
+# patients.txt is not migrated: the queue is live state, not a historical
+# record. Patients still waiting when the old system stopped are re-entered
+# through the UI; served ones are already captured as issue transactions.
 
 
 def migrate_donors():
