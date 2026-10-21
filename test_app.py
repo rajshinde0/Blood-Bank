@@ -19,13 +19,13 @@ os.environ['DATABASE_URL'] = 'sqlite:///' + _DB_PATH.replace('\\', '/')
 os.environ['SQLALCHEMY_ECHO'] = 'false'
 
 import pytest  # noqa: E402
-from datetime import datetime, timedelta  # noqa: E402
+from datetime import datetime, timedelta, timezone  # noqa: E402
 from werkzeug.exceptions import BadRequest  # noqa: E402
 
 from app import app, db, check_compatibility, patient_queue  # noqa: E402
 from models import (  # noqa: E402
     User, Donor, Patient, Inventory, Transaction, BloodType,
-    UrgencyLevel, UserRole
+    UrgencyLevel, UserRole, utcnow
 )
 
 BLOOD_TYPES = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-']
@@ -308,7 +308,7 @@ class TestPatientQueue:
         assert response.status_code == 201, response.get_json()
 
     def test_patient_wait_time_calculation(self, ctx):
-        arrival = datetime.utcnow() - timedelta(minutes=30)
+        arrival = utcnow() - timedelta(minutes=30)
         patient = Patient(
             patient_id='P002', name='Wait Test', age=25, phone='1234567890',
             blood_group=BloodType.O_POSITIVE, urgency=UrgencyLevel.NORMAL,
@@ -365,6 +365,103 @@ class TestPatientQueue:
 # ============================================================================
 # Inventory
 # ============================================================================
+
+class TestTimezoneAwareness:
+    """datetime.utcnow() is deprecated from 3.12 and returns a naive value.
+
+    The migration is only safe if it is total: a value written as aware must
+    come back aware, or arithmetic against a fresh utcnow() raises TypeError.
+    """
+
+    def test_utcnow_is_aware_utc(self):
+        now = utcnow()
+        assert now.tzinfo is not None
+        assert now.utcoffset() == timedelta(0)
+
+    def test_stored_datetimes_round_trip_aware(self, ctx):
+        """The column type must re-attach UTC on load, not hand back naive."""
+        donor = Donor(donor_id='TZ001', name='Round Trip',
+                      blood_group=BloodType.O_POSITIVE, age=30, phone='1234567890')
+        db.session.add(donor)
+        db.session.commit()
+        db.session.expunge_all()          # force a real read from the database
+
+        loaded = Donor.query.filter_by(donor_id='TZ001').first()
+        assert loaded.created_at.tzinfo is not None, 'came back naive'
+        assert loaded.created_at.utcoffset() == timedelta(0)
+        # The value that matters: arithmetic against a fresh now() must work.
+        assert (utcnow() - loaded.created_at).total_seconds() < 60
+
+    def test_wait_time_survives_a_database_round_trip(self, ctx):
+        patient = Patient(
+            patient_id='TZ002', name='Waiting', age=25, phone='1234567890',
+            blood_group=BloodType.O_POSITIVE, urgency=UrgencyLevel.NORMAL,
+            arrival_time=utcnow() - timedelta(minutes=30)
+        )
+        db.session.add(patient)
+        db.session.commit()
+        db.session.expunge_all()
+
+        loaded = Patient.query.filter_by(patient_id='TZ002').first()
+        assert 28 <= loaded.wait_time_minutes <= 32
+
+    def test_time_remaining_after_round_trip(self, auth_client):
+        from utils import get_time_remaining
+
+        auth_client.post('/add_patient', data={
+            'id': 'TZ003', 'name': 'Deadline Case', 'age': '40',
+            'phone': '1234567890', 'blood_group': 'O+',
+            'urgency': '2', 'deadline_hours': '3'
+        })
+        db.session.expunge_all()
+
+        loaded = Patient.query.filter_by(patient_id='TZ003').first()
+        assert get_time_remaining(loaded.deadline).endswith('m')
+
+    def test_naive_deadline_is_tolerated(self):
+        """A hand-built naive value must not blow up the formatter."""
+        from utils import get_time_remaining
+        # Deliberately naive, built without the deprecated call.
+        naive = (utcnow() + timedelta(hours=2)).replace(tzinfo=None)
+        assert get_time_remaining(naive) != 'EXPIRED'
+
+    def test_queue_mixes_patients_with_and_without_deadlines(self, auth_client):
+        """Regression: the heap used float('inf') for a missing deadline.
+
+        Within one urgency level that compares a datetime against a float:
+        TypeError: '<' not supported between 'datetime.datetime' and 'float'.
+        """
+        assert auth_client.post('/add_patient', data={
+            'id': 'TZ010', 'name': 'No Deadline', 'age': '30',
+            'phone': '1111111111', 'blood_group': 'O+', 'urgency': '2'
+        }).status_code == 201
+
+        response = auth_client.post('/add_patient', data={
+            'id': 'TZ011', 'name': 'Has Deadline', 'age': '30',
+            'phone': '2222222222', 'blood_group': 'O+',
+            'urgency': '2', 'deadline_hours': '6'
+        })
+        assert response.status_code == 201, response.get_json()
+
+        # The one with a deadline must come first within the same urgency.
+        assert patient_queue.peek().patient_id == 'TZ011'
+
+    def test_expired_deadline_comparison(self, auth_client):
+        """/api/queue/status compares a stored deadline against now()."""
+        patient = Patient(
+            patient_id='TZ020', name='Overdue', age=30, phone='3333333333',
+            blood_group=BloodType.O_POSITIVE, urgency=UrgencyLevel.CRITICAL,
+            deadline=utcnow() - timedelta(hours=1)
+        )
+        db.session.add(patient)
+        db.session.commit()
+        # expire_all(), not expunge_all(): the latter would also detach the
+        # signed-in User and break Flask-Login on the next request.
+        db.session.expire_all()
+
+        body = auth_client.get('/api/queue/status').get_json()
+        assert body['expired_deadlines'] >= 1
+
 
 class TestInventoryManagement:
 

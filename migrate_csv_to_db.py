@@ -4,7 +4,7 @@ Migration script to migrate data from CSV files to SQLite database
 Run before first launch: python migrate_csv_to_db.py
 """
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from app import app, db
 from models import Donor, Inventory, Transaction, BloodType, UrgencyLevel
 from utils import blood_enum
@@ -146,7 +146,7 @@ def migrate_transactions():
                 # Try to parse common time formats
                 created_at = datetime.strptime(timestamp_str, '%a %b %d %H:%M:%S %Y')
             except:
-                created_at = datetime.utcnow()
+                created_at = datetime.now(timezone.utc)
             
             
             # Find donor if donation

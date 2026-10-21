@@ -7,7 +7,7 @@ from flask_login import LoginManager, login_required, login_user, logout_user, c
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask_wtf.csrf import CSRFProtect, CSRFError
 from functools import lru_cache
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import heapq
 import logging
 import os
@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 from config import get_config
 from models import (
     db, User, Donor, Patient, Inventory, Transaction, BloodCompatibility,
-    AuditLog, SystemAlert, UrgencyLevel, UserRole, BloodType
+    AuditLog, SystemAlert, UrgencyLevel, UserRole, BloodType, utcnow
 )
 from utils import (
     validate_phone, validate_email, validate_blood_group,
@@ -74,9 +74,16 @@ class PatientQueue:
         self.heap = []
         self.counter = 0
     
+    # Sorts after every real deadline, and - unlike float('inf') - compares
+    # cleanly against the datetimes it shares a heap tuple with.
+    NO_DEADLINE = datetime.max.replace(tzinfo=timezone.utc)
+
     def enqueue(self, patient):
         """Add patient to priority queue"""
-        deadline = patient.deadline if patient.deadline else float('inf')
+        deadline = patient.deadline or self.NO_DEADLINE
+        if deadline.tzinfo is None:
+            # Defensive: a value built outside the ORM would be naive.
+            deadline = deadline.replace(tzinfo=timezone.utc)
         heapq.heappush(self.heap, (patient.urgency.value, deadline, self.counter, patient.id))
         self.counter += 1
     
@@ -630,10 +637,10 @@ def add_transaction():
         # Update donor donation count
         if action == 'donation':
             donor.donation_count += 1
-            donor.last_donation = datetime.utcnow()
+            donor.last_donation = utcnow()
         else:
             patient.served = True
-            patient.served_time = datetime.utcnow()
+            patient.served_time = utcnow()
 
         db.session.commit()
 
@@ -653,7 +660,7 @@ def add_transaction():
             'action': action,
             'blood_group': blood_group,
             'quantity': quantity,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': utcnow().isoformat()
         })
         
         # Check for low stock alert
@@ -744,7 +751,7 @@ def add_patient():
             return jsonify({'error': 'Patient ID already exists'}), 409
         
         # Calculate deadline
-        arrival_time = datetime.utcnow()
+        arrival_time = utcnow()
         deadline = None
         if deadline_hours and deadline_hours.strip():
             deadline = arrival_time + timedelta(hours=int(deadline_hours))
@@ -814,7 +821,7 @@ def serve_patient():
         }), 404
     
     patient.served = True
-    patient.served_time = datetime.utcnow()
+    patient.served_time = utcnow()
     db.session.commit()
     
     logger.info(f"Patient served: {patient.patient_id}")
@@ -877,7 +884,7 @@ def queue_status():
     urgent = sum(1 for p in all_patients if p.urgency == UrgencyLevel.URGENT)
     normal = sum(1 for p in all_patients if p.urgency == UrgencyLevel.NORMAL)
     
-    expired_deadlines = sum(1 for p in all_patients if p.deadline and p.deadline < datetime.utcnow())
+    expired_deadlines = sum(1 for p in all_patients if p.deadline and p.deadline < utcnow())
     
     # peek() discards stale heap entries as it goes, so call it exactly once.
     next_patient = patient_queue.peek()
@@ -983,7 +990,7 @@ def report_inventory():
     inventory = Inventory.query.all()
     
     report = {
-        'generated_at': datetime.utcnow().isoformat(),
+        'generated_at': utcnow().isoformat(),
         'generated_by': current_user.username,
         'total_units': sum(inv.quantity for inv in inventory),
         'items': [
@@ -1004,6 +1011,16 @@ def report_inventory():
     return jsonify(report), 200
 
 
+def _as_utc(value):
+    """Parse an ISO-8601 query parameter as UTC.
+
+    A date with no offset is read as UTC rather than local time, so report
+    boundaries mean the same thing wherever the server runs.
+    """
+    parsed = datetime.fromisoformat(value)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 @app.route('/api/reports/transactions', methods=['GET'])
 @login_required
 def report_transactions():
@@ -1014,17 +1031,15 @@ def report_transactions():
     query = Transaction.query
     
     if start_date:
-        start = datetime.fromisoformat(start_date)
-        query = query.filter(Transaction.created_at >= start)
-    
+        query = query.filter(Transaction.created_at >= _as_utc(start_date))
+
     if end_date:
-        end = datetime.fromisoformat(end_date)
-        query = query.filter(Transaction.created_at <= end)
+        query = query.filter(Transaction.created_at <= _as_utc(end_date))
     
     transactions = query.all()
     
     report = {
-        'generated_at': datetime.utcnow().isoformat(),
+        'generated_at': utcnow().isoformat(),
         'generated_by': current_user.username,
         'filters': {
             'start_date': start_date,

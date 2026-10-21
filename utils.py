@@ -3,7 +3,7 @@ Utility functions for validation, formatting, and helpers
 """
 import re
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 from flask import jsonify, request
 from werkzeug.exceptions import BadRequest
@@ -224,7 +224,12 @@ def get_time_remaining(deadline):
     if not deadline:
         return 'No deadline'
     
-    remaining = deadline - datetime.utcnow()
+    if deadline.tzinfo is None:
+        # Tolerate a naive deadline (e.g. hand-built in a test) rather than
+        # raising on aware/naive subtraction.
+        deadline = deadline.replace(tzinfo=timezone.utc)
+
+    remaining = deadline - datetime.now(timezone.utc)
     
     if remaining.total_seconds() <= 0:
         return 'EXPIRED'
@@ -283,7 +288,7 @@ def blood_enum_or_none(value):
 def generate_transaction_id(action, blood_group, timestamp=None):
     """Generate unique transaction ID"""
     if timestamp is None:
-        timestamp = datetime.utcnow()
+        timestamp = datetime.now(timezone.utc)
     
     time_str = timestamp.strftime('%Y%m%d%H%M%S')
     action_prefix = 'DON' if action.lower() == 'donation' else 'ISS'

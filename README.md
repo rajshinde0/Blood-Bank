@@ -10,7 +10,7 @@ implementation of the underlying structures in [`cpp_Backend/`](cpp_Backend/).
 ![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-2.3-000000?logo=flask&logoColor=white)
 ![SQLAlchemy](https://img.shields.io/badge/SQLAlchemy-2.0-D71F00)
-![Tests](https://img.shields.io/badge/tests-58%20passing-16794a)
+![Tests](https://img.shields.io/badge/tests-65%20passing-16794a)
 
 ---
 
@@ -62,6 +62,9 @@ The heap lives in memory, so two things keep it honest:
   survives a restart.
 - `dequeue()` and `peek()` discard entries whose patient has since been served
   (for example through an *issue* transaction), so a stale heap self-heals.
+- A patient with no deadline sorts with a max-datetime sentinel rather than
+  `float('inf')`, which would make the heap compare a `datetime` against a
+  `float` and raise `TypeError`.
 
 **LRU-cached compatibility lookup (`check_compatibility`)** — the donor →
 recipient table is a dictionary; `functools.lru_cache(maxsize=256)` makes repeat
@@ -135,7 +138,7 @@ Everything is read from the environment (or a `.env` file). See
 ├── logger.py               # Rotating file + console logging
 ├── wsgi.py                 # Production entry point
 ├── migrate_csv_to_db.py    # One-off import from the legacy flat files
-├── test_app.py             # 58 tests
+├── test_app.py             # 65 tests
 │
 ├── templates/              # Jinja templates, all extending base.html
 │   ├── base.html           #   layout: nav, theme toggle, toasts
@@ -228,17 +231,18 @@ to convert — a `LIKE '%O+%'` filter against those columns can never match.
 ## Testing
 
 ```bash
-pytest test_app.py -v                      # 58 tests
+pytest test_app.py -v                      # 65 tests
 pytest test_app.py --cov=. --cov-report=term-missing
 ```
 
 Tests run against a temporary SQLite file configured before `app` is imported,
 so they never touch your development database. Coverage includes authentication,
 CSRF (rejection without a token, acceptance with one, and a sweep asserting no
-write route is reachable unprotected), donor CRUD and search, the priority queue
-(ordering, restart recovery, no double-serving), inventory thresholds,
-transactions in both directions, every page rendering, and the validation
-helpers.
+write route is reachable unprotected), timezone awareness (aware round-trips
+through SQLite, and a heap holding patients both with and without deadlines),
+donor CRUD and search, the priority queue (ordering, restart recovery, no
+double-serving), inventory thresholds, transactions in both directions, every
+page rendering, and the validation helpers.
 
 ---
 
@@ -285,12 +289,25 @@ Duplicate IDs are skipped, so it is safe to re-run.
   triggered by any third-party page.
 - `/healthz` is `@csrf.exempt`: it is a liveness probe, not a browser form.
 
+### Datetimes
+
+Every datetime is timezone-aware UTC. `models.utcnow()` replaces the deprecated
+`datetime.utcnow()`, and `models.UTCDateTime` is a `TypeDecorator` that keeps
+the two directions symmetric:
+
+- SQLite has no native datetime type — SQLAlchemy stores a formatted string and
+  **drops any tzinfo**, so an aware value written to the database would come
+  back naive. Arithmetic between that and a fresh `utcnow()` raises `TypeError`.
+- The decorator stores naive UTC (byte-identical to what the pre-migration code
+  wrote, so **existing databases keep working with no migration**) and re-attaches
+  `tzinfo=UTC` on load.
+
+If you add a datetime column, use `UTCDateTime`, not `db.DateTime`. `pytest.ini`
+turns any new `DeprecationWarning` from `app`, `models` or `utils` into an error
+so a naive value cannot creep back in.
+
 ## Known limitations
 
-- **`datetime.utcnow()` throughout.** Deprecated in Python 3.12+. Migrating to
-  timezone-aware datetimes has to happen in one sweep: SQLite returns naive
-  values, so a partial migration would mix aware and naive datetimes and break
-  the subtractions in `Patient.wait_time_minutes` and `utils.get_time_remaining`.
 - **Single-process queue.** `PatientQueue` is per-process. Running more than one
   worker needs the heap moved into the database or a shared store.
 - **Roles are not enforced.** The `role` column exists and is displayed, but no
