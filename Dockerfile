@@ -1,46 +1,35 @@
-# Use official Python runtime as base image
-FROM python:3.9-slim
+# syntax=docker/dockerfile:1
+FROM python:3.11-slim
 
-# Set working directory in container
 WORKDIR /app
 
-# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     FLASK_APP=app.py \
     FLASK_ENV=production
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first for better caching
+# Copy requirements first so the dependency layer caches independently of code.
 COPY requirements.txt .
+RUN pip install --upgrade pip && pip install -r requirements.txt
 
-# Install Python dependencies
-RUN pip install --upgrade pip && \
-    pip install -r requirements.txt
-
-# Copy application code
 COPY . .
 
-# Create logs directory
-RUN mkdir -p logs
+# Writable directories for logs and the SQLite database.
+RUN mkdir -p logs instance
 
-# Create non-root user for security
-RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
-
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
 EXPOSE 5000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:5000/', timeout=2)" || exit 1
+# urllib comes from the stdlib - the previous healthcheck imported `requests`,
+# which was never installed, so the container was permanently unhealthy.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=5).status == 200 else 1)"
 
-# Run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "4", "--threads", "2", "--timeout", "60", "--access-logfile", "-", "--error-logfile", "-", "wsgi:app"]
+# One eventlet worker: Socket.IO needs WebSocket-capable workers, and multiple
+# workers would split clients across processes without a shared message queue.
+CMD ["gunicorn", "--worker-class", "eventlet", "--workers", "1", \
+     "--bind", "0.0.0.0:5000", "--timeout", "120", \
+     "--access-logfile", "-", "--error-logfile", "-", "wsgi:app"]
