@@ -1,3 +1,8 @@
+> **Historical record of the v2.0 refactor.** File names and paths here
+> describe the repository as it stood at that time - `README_NEW.md` has
+> since become the root [`README.md`](../README.md), and `Templates/`
+> is now `templates/`. Kept for context, not as current documentation.
+
 # 🚀 IMPLEMENTATION SUMMARY - Blood Bank Management System v2.0
 
 **Date:** March 13, 2026  

@@ -1,12 +1,16 @@
-# Blood Bank Management System - Quick Start Guide
+# Quick Start Guide
+
+> Condensed setup notes. The full documentation lives in the
+> [project README](../README.md).
 
 ## 📦 Installation (5 minutes)
 
 ### Step 1: Setup Environment
 ```bash
-python -m venv venv
-venv\Scripts\activate  # Windows
-# source venv/bin/activate  # macOS/Linux
+# Run these from the repository root
+python -m venv .venv
+.venv\Scripts\activate  # Windows
+# source .venv/bin/activate  # macOS/Linux
 ```
 
 ### Step 2: Install Requirements
@@ -135,15 +139,15 @@ LOG_LEVEL=INFO
 
 ## 🔗 Resources
 
-- **Main README:** [README_NEW.md](README_NEW.md)
-- **API Docs:** Check [README_NEW.md](README_NEW.md#-api-documentation)
-- **Deployment:** Check [README_NEW.md](README_NEW.md#-deployment)
+- **Main README:** [README](../README.md)
+- **API Docs:** Check [README](../README.md#api-reference)
+- **Deployment:** Check [README](../README.md#docker)
 
 ## ❓ Support
 
 1. Check logs: `tail -f logs/app.log`
 2. Review error messages
-3. Consult [README_NEW.md](README_NEW.md#-troubleshooting)
+3. Consult [README](../README.md#known-limitations)
 
 ---
 
