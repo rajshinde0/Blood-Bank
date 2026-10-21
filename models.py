@@ -182,7 +182,7 @@ class BloodCompatibility(db.Model):
     __table_args__ = (db.UniqueConstraint('donor_blood', 'patient_blood', name='uq_compatibility'),)
     
     def __repr__(self):
-        return f'<Compatibility {self.donor_blood} → {self.patient_blood}: {self.compatible}>'
+        return f'<Compatibility {self.donor_blood} -> {self.patient_blood}: {self.compatible}>'
 
 
 class AuditLog(db.Model):

@@ -19,10 +19,12 @@ from models import (
     AuditLog, SystemAlert, UrgencyLevel, UserRole, BloodType
 )
 from utils import (
-    validate_phone, validate_email, validate_blood_group, validate_age,
+    validate_phone, validate_email, validate_blood_group,
+    validate_donor_age, validate_patient_age,
     validate_quantity, validate_urgency, validate_name, validate_id,
     validate_password, handle_exceptions, format_blood_group,
-    get_urgency_label, get_time_remaining, generate_transaction_id
+    get_urgency_label, get_time_remaining, generate_transaction_id,
+    blood_enum, blood_enum_or_none, blood_sort_key
 )
 from logger import setup_logging, get_logger
 
@@ -53,7 +55,7 @@ logger = get_logger(__name__)
 @login_manager.user_loader
 def load_user(user_id):
     """Load user from database"""
-    return User.query.get(int(user_id))
+    return db.session.get(User, int(user_id))
 
 
 # ============================================================================
@@ -73,15 +75,21 @@ class PatientQueue:
         self.counter += 1
     
     def dequeue(self):
-        """Remove and return most critical patient"""
-        if self.heap:
-            return Patient.query.get(heapq.heappop(self.heap)[3])
+        """Remove and return most critical patient still waiting"""
+        while self.heap:
+            patient = db.session.get(Patient, heapq.heappop(self.heap)[3])
+            if patient and not patient.served:
+                return patient
+            # Row deleted, or already served through a transaction - drop it.
         return None
-    
+
     def peek(self):
-        """View most critical patient without removing"""
-        if self.heap:
-            return Patient.query.get(self.heap[0][3])
+        """View most critical patient without removing (discards stale entries)"""
+        while self.heap:
+            patient = db.session.get(Patient, self.heap[0][3])
+            if patient and not patient.served:
+                return patient
+            heapq.heappop(self.heap)
         return None
     
     def refresh(self):
@@ -158,12 +166,17 @@ def init_db():
             blood_types = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-']
             for blood in blood_types:
                 inventory = Inventory(
-                    blood_group=BloodType[blood.replace('+', '_POSITIVE').replace('-', '_NEGATIVE')],
+                    blood_group=blood_enum(blood),
                     quantity=100
                 )
                 db.session.add(inventory)
             db.session.commit()
             logger.info("Default blood type inventory initialized")
+
+        # The heap lives in memory; rebuild it from the database so unserved
+        # patients survive a restart.
+        patient_queue.refresh()
+        logger.info(f"Patient queue restored with {patient_queue.size()} waiting patient(s)")
 
 
 # Initialize database on app startup
@@ -201,6 +214,9 @@ def log_audit(action, resource_type, resource_id=None, old_values=None, new_valu
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     """User registration"""
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
     if request.method == 'POST':
         try:
             username = request.form.get('username', '').strip()
@@ -241,6 +257,9 @@ def register():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     """User login"""
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
     if request.method == 'POST':
         try:
             username = request.form.get('username', '').strip()
@@ -293,9 +312,10 @@ def index():
         total_patients = Patient.query.count()
         total_transactions = Transaction.query.count()
         
-        # Get inventory overview
-        inventory = Inventory.query.all()
+        # Get inventory overview, ordered so the cards never shuffle between loads
+        inventory = sorted(Inventory.query.all(), key=blood_sort_key)
         low_stock = [inv for inv in inventory if inv.is_low_stock]
+        total_units = sum(inv.quantity for inv in inventory)
         
         # Get recent transactions
         recent_transactions = Transaction.query.order_by(Transaction.created_at.desc()).limit(10).all()
@@ -315,15 +335,28 @@ def index():
             total_patients=total_patients,
             total_transactions=total_transactions,
             inventory=inventory,
+            low_stock=low_stock,
             low_stock_count=len(low_stock),
+            total_units=total_units,
             recent_transactions=recent_transactions[:5],
             queue_size=queue_size,
             critical_count=critical_count,
             urgent_count=urgent_count
         )
     except Exception as e:
-        logger.error(f"Error loading dashboard: {str(e)}")
-        return render_template('error.html', error=str(e)), 500
+        logger.exception("Error loading dashboard")
+        return render_template('error.html', code=500, error=str(e)), 500
+
+
+@app.route('/healthz')
+def healthz():
+    """Liveness probe for containers and load balancers (no auth required)"""
+    try:
+        db.session.execute(db.text('SELECT 1'))
+        return jsonify({'status': 'ok', 'queue_size': patient_queue.size()}), 200
+    except Exception as exc:
+        logger.error(f"Health check failed: {exc}")
+        return jsonify({'status': 'degraded', 'error': str(exc)}), 503
 
 
 # ============================================================================
@@ -342,22 +375,32 @@ def donors():
     query = Donor.query.filter_by(is_active=True)
     
     if search_query:
+        # blood_group is an Enum column - SQLAlchemy stores the member *name*
+        # (O_POSITIVE), so a LIKE against 'O+' never matches. Resolve the term
+        # to a BloodType and compare by equality instead.
+        blood_match = blood_enum_or_none(search_query)
+
         if search_type == 'id':
             query = query.filter(Donor.donor_id.ilike(f'%{search_query}%'))
         elif search_type == 'name':
             query = query.filter(Donor.name.ilike(f'%{search_query}%'))
         elif search_type == 'blood':
-            query = query.filter(Donor.blood_group.ilike(f'%{search_query}%'))
-        elif search_type == 'all':
-            query = query.filter(
-                db.or_(
-                    Donor.donor_id.ilike(f'%{search_query}%'),
-                    Donor.name.ilike(f'%{search_query}%'),
-                    Donor.blood_group.ilike(f'%{search_query}%')
-                )
-            )
-    
-    donors_paginated = query.paginate(page=page, per_page=20)
+            # An unrecognised blood group matches nothing rather than everything.
+            query = query.filter(Donor.blood_group == blood_match) if blood_match                 else query.filter(db.false())
+        else:
+            clauses = [
+                Donor.donor_id.ilike(f'%{search_query}%'),
+                Donor.name.ilike(f'%{search_query}%'),
+                Donor.city.ilike(f'%{search_query}%')
+            ]
+            if blood_match:
+                clauses.append(Donor.blood_group == blood_match)
+            query = query.filter(db.or_(*clauses))
+
+    per_page = app.config.get('ITEMS_PER_PAGE', 20)
+    donors_paginated = query.order_by(Donor.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
     
     return render_template(
         'donors.html',
@@ -379,7 +422,7 @@ def add_donor():
         donor_id = validate_id(request.form.get('id'), 'Donor')
         name = validate_name(request.form.get('name'))
         blood_group = validate_blood_group(request.form.get('blood_group'))
-        age = validate_age(request.form.get('age'))
+        age = validate_donor_age(request.form.get('age'))
         phone = validate_phone(request.form.get('phone'))
         email = validate_email(request.form.get('email', ''))
         city = request.form.get('city', '').strip()
@@ -392,7 +435,7 @@ def add_donor():
         donor = Donor(
             donor_id=donor_id,
             name=name,
-            blood_group=BloodType[blood_group.replace('+', '_POSITIVE').replace('-', '_NEGATIVE')],
+            blood_group=blood_enum(blood_group),
             age=age,
             phone=phone,
             email=email,
@@ -411,7 +454,7 @@ def add_donor():
             'donor_id': donor_id,
             'name': name,
             'blood_group': blood_group
-        }, broadcast=True)
+        })
         
         return jsonify({
             'success': True,
@@ -441,7 +484,7 @@ def delete_donor(donor_id):
     logger.info(f"Donor deleted: {donor_id}")
     log_audit('DELETE', 'donor', donor_id, old_values={'name': donor.name})
     
-    socketio.emit('donor_deleted', {'donor_id': donor_id}, broadcast=True)
+    socketio.emit('donor_deleted', {'donor_id': donor_id})
     
     return jsonify({'success': True, 'message': 'Donor deleted successfully'}), 200
 
@@ -455,7 +498,7 @@ def delete_donor(donor_id):
 @handle_exceptions
 def inventory():
     """View blood inventory"""
-    inventory_items = Inventory.query.all()
+    inventory_items = sorted(Inventory.query.all(), key=blood_sort_key)
     
     return render_template('inventory.html', inventory=inventory_items)
 
@@ -467,9 +510,7 @@ def get_inventory_item(blood_group):
     """Get specific inventory item"""
     blood_group = validate_blood_group(blood_group)
     
-    inventory = Inventory.query.filter_by(
-        blood_group=BloodType[blood_group.replace('+', '_POSITIVE').replace('-', '_NEGATIVE')]
-    ).first()
+    inventory = Inventory.query.filter_by(blood_group=blood_enum(blood_group)).first()
     
     if not inventory:
         return jsonify({'error': 'Inventory item not found'}), 404
@@ -503,7 +544,10 @@ def transactions():
     elif filter_type == 'issue':
         query = query.filter_by(action='issue')
     
-    transactions_paginated = query.order_by(Transaction.created_at.desc()).paginate(page=page, per_page=20)
+    per_page = app.config.get('ITEMS_PER_PAGE', 20)
+    transactions_paginated = query.order_by(Transaction.created_at.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
     
     donors = Donor.query.filter_by(is_active=True).all()
     patients = Patient.query.filter_by(served=False).all()
@@ -546,8 +590,8 @@ def add_transaction():
                 return jsonify({'error': 'Patient not found'}), 404
         
         # Update inventory
-        blood_enum = BloodType[blood_group.replace('+', '_POSITIVE').replace('-', '_NEGATIVE')]
-        inventory = Inventory.query.filter_by(blood_group=blood_enum).first()
+        blood_type = blood_enum(blood_group)
+        inventory = Inventory.query.filter_by(blood_group=blood_type).first()
         
         if not inventory:
             return jsonify({'error': 'Blood type not in inventory'}), 404
@@ -567,7 +611,7 @@ def add_transaction():
             action=action,
             donor_id=donor.id if action == 'donation' else None,
             patient_id=patient.id if action == 'issue' else None,
-            blood_group=blood_enum,
+            blood_group=blood_type,
             quantity=quantity,
             status='completed',
             created_by=current_user.id,
@@ -583,9 +627,14 @@ def add_transaction():
         else:
             patient.served = True
             patient.served_time = datetime.utcnow()
-        
+
         db.session.commit()
-        
+
+        if action == 'issue':
+            # This patient was served outside /serve_patient, so the in-memory
+            # heap still holds them. Rebuild it rather than leave a stale entry.
+            patient_queue.refresh()
+
         logger.info(f"Transaction recorded: {transaction.transaction_id}")
         log_audit('CREATE', 'transaction', transaction.transaction_id, new_values={
             'action': action, 'blood_group': blood_group, 'quantity': quantity
@@ -598,13 +647,13 @@ def add_transaction():
             'blood_group': blood_group,
             'quantity': quantity,
             'timestamp': datetime.utcnow().isoformat()
-        }, broadcast=True)
+        })
         
         # Check for low stock alert
         if inventory.is_low_stock:
             alert = SystemAlert(
                 alert_type='low_stock',
-                blood_group=blood_enum,
+                blood_group=blood_type,
                 message=f'{blood_group} blood type running low: {inventory.quantity} units',
                 severity='warning'
             )
@@ -614,7 +663,7 @@ def add_transaction():
                 'type': 'low_stock',
                 'blood_group': blood_group,
                 'message': alert.message
-            }, broadcast=True)
+            })
         
         return jsonify({
             'success': True,
@@ -648,7 +697,10 @@ def patients():
         if filter_urgency in urgency_map:
             query = query.filter_by(urgency=UrgencyLevel(urgency_map[filter_urgency]))
     
-    patients_paginated = query.order_by(Patient.arrival_time.asc()).paginate(page=page, per_page=20)
+    per_page = app.config.get('ITEMS_PER_PAGE', 20)
+    patients_paginated = query.order_by(
+        Patient.urgency.asc(), Patient.arrival_time.asc()
+    ).paginate(page=page, per_page=per_page, error_out=False)
     
     # Enrich patient data with wait times
     for patient in patients_paginated.items:
@@ -674,7 +726,7 @@ def add_patient():
     try:
         patient_id = validate_id(request.form.get('id'), 'Patient')
         name = validate_name(request.form.get('name'))
-        age = validate_age(request.form.get('age'))
+        age = validate_patient_age(request.form.get('age'))
         phone = validate_phone(request.form.get('phone'))
         blood_group = validate_blood_group(request.form.get('blood_group'))
         urgency = validate_urgency(request.form.get('urgency'))
@@ -696,7 +748,7 @@ def add_patient():
             name=name,
             age=age,
             phone=phone,
-            blood_group=BloodType[blood_group.replace('+', '_POSITIVE').replace('-', '_NEGATIVE')],
+            blood_group=blood_enum(blood_group),
             urgency=UrgencyLevel(urgency),
             deadline=deadline,
             arrival_time=arrival_time
@@ -720,7 +772,7 @@ def add_patient():
             'name': name,
             'urgency': get_urgency_label(urgency),
             'queue_position': patient_queue.size()
-        }, broadcast=True)
+        })
         
         deadline_msg = ''
         if deadline:
@@ -765,7 +817,7 @@ def serve_patient():
         'patient_id': patient.patient_id,
         'name': patient.name,
         'remaining_in_queue': patient_queue.size()
-    }, broadcast=True)
+    })
     
     return jsonify({
         'success': True,
@@ -820,17 +872,21 @@ def queue_status():
     
     expired_deadlines = sum(1 for p in all_patients if p.deadline and p.deadline < datetime.utcnow())
     
+    # peek() discards stale heap entries as it goes, so call it exactly once.
+    next_patient = patient_queue.peek()
+
     return jsonify({
         'total': len(all_patients),
         'critical': critical,
         'urgent': urgent,
         'normal': normal,
         'expired_deadlines': expired_deadlines,
+        'queue_size': patient_queue.size(),
         'next_patient': {
-            'patient_id': patient_queue.peek().patient_id,
-            'name': patient_queue.peek().name,
-            'urgency': get_urgency_label(patient_queue.peek().urgency.value)
-        } if patient_queue.peek() else None
+            'patient_id': next_patient.patient_id,
+            'name': next_patient.name,
+            'urgency': get_urgency_label(next_patient.urgency.value)
+        } if next_patient else None
     }), 200
 
 
@@ -858,11 +914,11 @@ def check_compatibility_route():
         is_compatible = check_compatibility(donor_blood, patient_blood)
         
         if is_compatible:
-            message = f"✓ COMPATIBLE: {donor_blood} donor CAN donate to {patient_blood} patient."
+            message = f"COMPATIBLE: {donor_blood} donor CAN donate to {patient_blood} patient."
         else:
-            message = f"✗ INCOMPATIBLE: {donor_blood} donor CANNOT donate to {patient_blood} patient."
+            message = f"INCOMPATIBLE: {donor_blood} donor CANNOT donate to {patient_blood} patient."
         
-        logger.info(f"Compatibility check: {donor_blood} → {patient_blood}: {is_compatible}")
+        logger.info(f"Compatibility check: {donor_blood} -> {patient_blood}: {is_compatible}")
         
         return jsonify({
             'compatible': is_compatible,
@@ -1027,10 +1083,20 @@ def handle_queue_update():
 # ERROR HANDLERS
 # ============================================================================
 
+@app.errorhandler(403)
+def forbidden(error):
+    """403 error handler"""
+    return render_template(
+        'error.html', code=403, error='You do not have access to this page.'
+    ), 403
+
+
 @app.errorhandler(404)
 def not_found(error):
     """404 error handler"""
-    return render_template('error.html', error='Page not found'), 404
+    return render_template(
+        'error.html', code=404, error='We could not find that page.'
+    ), 404
 
 
 @app.errorhandler(500)
@@ -1038,7 +1104,9 @@ def internal_error(error):
     """500 error handler"""
     logger.error(f"Internal server error: {str(error)}")
     db.session.rollback()
-    return render_template('error.html', error='Internal server error'), 500
+    return render_template(
+        'error.html', code=500, error='Something went wrong on our end.'
+    ), 500
 
 
 # ============================================================================

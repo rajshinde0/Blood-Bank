@@ -46,22 +46,32 @@ def validate_blood_group(blood_group):
     valid_groups = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-']
     
     if not blood_group or blood_group.strip().upper() not in valid_groups:
-        raise BadRequest(f"Invalid blood group. Valid genres: {', '.join(valid_groups)}")
+        raise BadRequest(f"Invalid blood group. Valid groups: {', '.join(valid_groups)}")
     
     return blood_group.strip().upper()
 
 
-def validate_age(age):
-    """Validate age"""
+def validate_age(age, min_age=0, max_age=120, label='Age'):
+    """Validate an age against an inclusive range"""
     try:
         age_int = int(age)
-        if age_int < 18:
-            raise BadRequest("Donor/Patient must be at least 18 years old")
-        if age_int > 120:
-            raise BadRequest("Invalid age")
-        return age_int
-    except ValueError:
-        raise BadRequest("Age must be a number")
+    except (TypeError, ValueError):
+        raise BadRequest(f"{label} must be a number")
+
+    if age_int < min_age or age_int > max_age:
+        raise BadRequest(f"{label} must be between {min_age} and {max_age}")
+
+    return age_int
+
+
+def validate_donor_age(age):
+    """Donors must be of legal donating age"""
+    return validate_age(age, min_age=18, max_age=65, label='Donor age')
+
+
+def validate_patient_age(age):
+    """Patients may be of any age - children receive transfusions too"""
+    return validate_age(age, min_age=0, max_age=120, label='Patient age')
 
 
 def validate_quantity(quantity):
@@ -234,6 +244,41 @@ def get_time_remaining(deadline):
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
+
+# Conventional clinical ordering. Sorting by the Enum column instead gives
+# AB-, AB+, A-, ... because SQLAlchemy stores the member *name* and '_' sorts
+# after 'B' in AB_NEGATIVE vs A_NEGATIVE.
+BLOOD_ORDER = ['O-', 'O+', 'A-', 'A+', 'B-', 'B+', 'AB-', 'AB+']
+
+
+def blood_sort_key(item):
+    """Sort key placing blood groups in conventional clinical order"""
+    value = item.blood_group.value if hasattr(item, 'blood_group') else str(item)
+    try:
+        return BLOOD_ORDER.index(value)
+    except ValueError:
+        return len(BLOOD_ORDER)
+
+
+def blood_enum(blood_group):
+    """
+    Resolve a human blood group ('O+') to its BloodType enum member.
+
+    SQLAlchemy persists the enum *name* (O_POSITIVE), so every query that
+    filters on a blood group has to go through this rather than comparing
+    against the display string.
+    """
+    from models import BloodType  # imported lazily to keep utils import-light
+    return BloodType[validate_blood_group(blood_group).replace('+', '_POSITIVE').replace('-', '_NEGATIVE')]
+
+
+def blood_enum_or_none(value):
+    """Same as blood_enum() but returns None instead of raising - for optional search terms"""
+    try:
+        return blood_enum(value)
+    except (BadRequest, KeyError, AttributeError):
+        return None
+
 
 def generate_transaction_id(action, blood_group, timestamp=None):
     """Generate unique transaction ID"""

@@ -4,13 +4,13 @@ Migration script to migrate data from CSV files to SQLite database
 Run before first launch: python migrate_csv_to_db.py
 """
 import os
-import csv
 from datetime import datetime
 from app import app, db
 from models import Donor, Inventory, Transaction, BloodType, UrgencyLevel
+from utils import blood_enum
 
 # File paths
-CSV_DIR = 'Data'
+CSV_DIR = os.getenv('SEED_DIR', 'data')
 DONORS_FILE = os.path.join(CSV_DIR, 'donors.txt')
 INVENTORY_FILE = os.path.join(CSV_DIR, 'inventory.txt')
 TRANSACTIONS_FILE = os.path.join(CSV_DIR, 'transactions.txt')
@@ -48,12 +48,11 @@ def migrate_donors():
                 continue
             
             # Convert blood group to enum
-            blood_enum_name = blood_group.replace('+', '_POSITIVE').replace('-', '_NEGATIVE')
             
             donor = Donor(
                 donor_id=donor_id,
                 name=name,
-                blood_group=BloodType[blood_enum_name],
+                blood_group=blood_enum(blood_group),
                 age=int(age),
                 phone=phone,
                 email=email,
@@ -66,7 +65,7 @@ def migrate_donors():
             print(f"  - Error migrating donor: {e}")
     
     db.session.commit()
-    print(f"  ✓ Migrated {migrated} donors")
+    print(f"  [OK] Migrated {migrated} donors")
 
 
 def migrate_inventory():
@@ -93,19 +92,18 @@ def migrate_inventory():
             blood_group, quantity = parts[:2]
             
             # Check if already exists
-            blood_enum_name = blood_group.replace('+', '_POSITIVE').replace('-', '_NEGATIVE')
             if Inventory.query.filter_by(
-                blood_group=BloodType[blood_enum_name]
+                blood_group=blood_enum(blood_group)
             ).first():
                 # Update existing
                 inv = Inventory.query.filter_by(
-                    blood_group=BloodType[blood_enum_name]
+                    blood_group=blood_enum(blood_group)
                 ).first()
                 inv.quantity = int(quantity)
             else:
                 # Create new
                 inv = Inventory(
-                    blood_group=BloodType[blood_enum_name],
+                    blood_group=blood_enum(blood_group),
                     quantity=int(quantity)
                 )
                 db.session.add(inv)
@@ -116,7 +114,7 @@ def migrate_inventory():
             print(f"  - Error migrating inventory: {e}")
     
     db.session.commit()
-    print(f"  ✓ Migrated {migrated} inventory records")
+    print(f"  [OK] Migrated {migrated} inventory records")
 
 
 def migrate_transactions():
@@ -150,7 +148,6 @@ def migrate_transactions():
             except:
                 created_at = datetime.utcnow()
             
-            blood_enum_name = blood_group.replace('+', '_POSITIVE').replace('-', '_NEGATIVE')
             
             # Find donor if donation
             donor_db_id = None
@@ -163,7 +160,7 @@ def migrate_transactions():
                 transaction_id=f"{action.upper()[:3]}_{blood_group}_{datetime.now().timestamp()}",
                 action=action.lower(),
                 donor_id=donor_db_id,
-                blood_group=BloodType[blood_enum_name],
+                blood_group=blood_enum(blood_group),
                 quantity=int(quantity),
                 status='completed',
                 created_at=created_at
@@ -175,7 +172,7 @@ def migrate_transactions():
             print(f"  - Error migrating transaction: {e}")
     
     db.session.commit()
-    print(f"  ✓ Migrated {migrated} transactions")
+    print(f"  [OK] Migrated {migrated} transactions")
 
 
 def main():
@@ -193,12 +190,12 @@ def main():
             migrate_transactions()
             
             print("\n" + "="*80)
-            print("✓ Migration completed successfully!")
+            print("[OK] Migration completed successfully!")
             print("="*80)
             print("\nYou can now start the application with: python app.py")
         
         except Exception as e:
-            print(f"\n✗ Migration failed: {e}")
+            print(f"\n[FAIL] Migration failed: {e}")
             db.session.rollback()
             return 1
     
